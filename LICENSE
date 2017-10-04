@@ -1,6 +1,8 @@
 MIT License
 
-Copyright (c) 2017 Sam Thomson
+Copyright for portions of project purescript-regex-applicative are held by
+Roman Cheplyaka, 2011 as part of project regex-applicative. All other copyright
+for project purescript-regex-applicative are held by Sam Thomson, 2017.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
