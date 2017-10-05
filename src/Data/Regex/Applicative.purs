@@ -14,37 +14,6 @@
 module Data.Regex.Applicative (
   module Data.Regex.Applicative.Types,
   module Data.Regex.Applicative.Interface
---   -- Types
---   Greediness(..),
---   RE,
---   eps,
---   symbol,
---   alt,
---   app,
---   fmap,
---   fail,
---   rep,
---   void
-
---   , sym
---   , psym
---   , msym
---   , anySym
---   , string
---   , reFoldl
---   , few
---   , comap
---   , withMatched
---   , match
---   , (=~)
---   , replace
---   , findFirstPrefix
---   , findLongestPrefix
---   , findShortestPrefix
---   , findFirstInfix
---   , findLongestInfix
---   , findShortestInfix
---   , module Control.Applicative
 ) where
 
 import Data.Regex.Applicative.Types (

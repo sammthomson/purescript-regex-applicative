@@ -5,6 +5,7 @@ module Data.Regex.Applicative.Compile (
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.State (State, evalState, modify, runState)
 import Data.Array (concatMap)
+import Data.Lazy (force)
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (class Newtype, wrap, unwrap)
@@ -122,7 +123,7 @@ mkNFA e = flip runState M.empty $ go [SAccept] e where
     symbol:
       \i@(ThreadId n) p ->
         do
-          modify $ M.insert n $ (Tuple (isJust <<< p) k)
+          modify $ M.insert (force n) $ (Tuple (isJust <<< p) k)
           pure [STransition i],
     app: \n1 n2 -> (go k n2) >>= (flip go n1),
     alt: \n1 n2 -> (<>) <$> go k n1 <*> go k n2,
@@ -151,7 +152,7 @@ compile2_ e' = case mkNFA e' of
     let
       mkThread' _ k1 (STransition i@(ThreadId n)) =
         -- TODO: unsafeThrow?!
-        case fromMaybe' (\_ -> unsafeThrow "Unknown id") $ M.lookup n fsmap of
+        case fromMaybe' (\_ -> unsafeThrow "Unknown id") $ M.lookup (force n) fsmap of
           Tuple p cont -> [
             mkThread i $ \s ->
               if p s

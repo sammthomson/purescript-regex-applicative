@@ -32,6 +32,7 @@ import Control.Monad.State (State, evalState, get, modify, put, runState)
 import Data.Array (fromFoldable, mapMaybe, null)
 import Data.Foldable (foldl)
 import Data.Foldable as F
+import Data.Lazy (force)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
@@ -110,7 +111,7 @@ addThread :: forall s r. Thread s r -> ReObject s r -> ReObject s r
 addThread t (ReObject q) =
   case t of
     Accept _ -> ReObject $ SQ.insert t q
-    Thread { threadId_: ThreadId i } -> ReObject $ SQ.insertUnique i t q
+    Thread { threadId_: ThreadId i } -> ReObject $ SQ.insertUnique (force i) t q
 
 -- | Compile a regular expression into a regular expression object
 compile :: forall s r. RE s r -> ReObject s r
@@ -140,10 +141,10 @@ renumber e =
         void: \a -> R $ void <$> go1 a
     }
   in
-    flip evalState (ThreadId 1) $ go1 e
+    flip evalState (ThreadId (pure 1)) $ go1 e
 
 fresh :: State ThreadId ThreadId
 fresh = do
   t@(ThreadId i) <- get
-  put $ ThreadId (i + 1)
+  put $ ThreadId ((+) 1 <$> i)
   pure t

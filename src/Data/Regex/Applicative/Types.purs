@@ -26,12 +26,14 @@ import Control.Alternative (class Alternative, pure)
 import Control.Lazy as Z
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
-import Data.Lazy as L
+import Data.Lazy (Lazy, defer, force)
 import Data.Newtype (class Newtype)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, Unit, const, unit, ($), (<<<))
 import Unsafe.Coerce (unsafeCoerce)
 
-newtype ThreadId = ThreadId Int
+newtype ThreadId = ThreadId (Lazy Int)
+instance lazyThreadId :: Z.Lazy ThreadId where
+  defer f = ThreadId $ defer \_ -> case f unit of ThreadId i -> force i
 
 -- | A thread either is a result or corresponds to a symbol in the regular
 -- expression, which is expected by that thread.
@@ -97,13 +99,11 @@ data RE' s a b =
   | Void (RE s b)
 
 -- we don't actually care about b
-newtype RE s a = RE (L.Lazy (Exists (RE' s a)))
+newtype RE s a = RE (Lazy (Exists (RE' s a)))
 derive instance newtypeRE :: Newtype (RE s a) _
 
 instance lazyRE :: Z.Lazy (RE s a) where
-  -- defer :: (Unit -> l) -> l
-  defer f =
-    RE $ L.defer \_ -> case f unit of RE x -> L.force x
+  defer f = RE $ defer \_ -> case f unit of RE x -> force x
 
 -- don't export me
 re :: forall s a b. RE' s a b -> RE s a
@@ -169,7 +169,7 @@ runFoldRE' fld x = case x of
   Void a -> unsafeCoerce fld.void a  -- `a = Unit`, trust us
 
 runFoldRE :: forall s a t. FoldRE s a t -> RE s a -> t a
-runFoldRE fld (RE re) = runExists (runFoldRE' fld) $ L.force re
+runFoldRE fld (RE re) = runExists (runFoldRE' fld) $ force re
 
 
 -- for pattern matching where we want to forget that `a = Unit` for Eps and Void.
@@ -200,7 +200,7 @@ runFoldRE_' fld x = case x of
   Void a -> fld.void a
 
 runFoldRE_ :: forall s a r. FoldRE_ s a r -> RE s a -> r
-runFoldRE_ fld (RE re) = runExists (runFoldRE_' fld) $ L.force re
+runFoldRE_ fld (RE re) = runExists (runFoldRE_' fld) $ force re
 
 instance functorRe :: Functor (RE s) where
   map f x = fmap f x

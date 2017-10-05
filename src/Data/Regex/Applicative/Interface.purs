@@ -1,6 +1,7 @@
 module Data.Regex.Applicative.Interface where
 
 import Control.Alternative (class Alt, class Alternative, class Plus, (<$>), (<|>))
+import Control.Lazy (defer)
 import Control.Monad.Eff.Console (error)
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Data.Array (cons, foldl, head, init, reverse, uncons)
@@ -45,7 +46,7 @@ psym p = msym (\s -> if p s then Just s else Nothing)
 -- original symbol
 msym :: forall s a. (s -> Maybe a) -> RE s a
 -- TODO: well this'll crash
-msym p = symbol (unsafeThrow "Not numbered symbol") p
+msym p = symbol (defer \_ -> unsafeThrow "Not numbered symbol") p
 
 -- | Match and return the given symbol
 sym :: forall s. Eq s => s -> RE s s
