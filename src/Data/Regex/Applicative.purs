@@ -19,14 +19,14 @@ module Data.Regex.Applicative (
 import Data.Regex.Applicative.Types (
   Greediness(..),
   RE,
-  eps,
-  symbol,
-  alt,
-  app,
-  fmap,
-  fail,
-  rep,
-  void
+  mkEps,
+  mkSymbol,
+  mkAlt,
+  mkApp,
+  mkFmap,
+  mkFail,
+  mkRep,
+  mkVoid
 )
 import Data.Regex.Applicative.Interface (
   sym

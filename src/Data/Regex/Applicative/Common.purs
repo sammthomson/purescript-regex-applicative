@@ -13,11 +13,10 @@ module Data.Regex.Applicative.Common (
 -- import Data.Char
 import Control.Alt ((<|>))
 import Data.Array (some)
-import Data.Char.Unicode (digitToInt, isDigit, isHexDigit)
+import Data.Char.Unicode (digitToInt)
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe)
-import Data.Regex.Applicative (RE, msym, psym, sym)
-import Prelude (class Ring, id, negate, pure, (*), (+), (<$), (<$>), (<*>), (<<<))
+import Data.Regex.Applicative (RE, msym, sym)
+import Prelude (class Ring, id, negate, pure, (*), (+), (<$), (<$>), (<*>))
 
 
 -- -- | Decimal digit, i.e. @\'0\'@..@\'9\'@

@@ -28,16 +28,15 @@ import Data.Maybe
 
 import Control.Applicative (pure, (<$>), (<*>))
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
-import Control.Monad.State (State, evalState, get, modify, put, runState)
+import Control.Monad.State (State, evalState, get, put)
 import Data.Array (fromFoldable, mapMaybe, null)
 import Data.Foldable (foldl)
-import Data.Foldable as F
 import Data.Lazy (force)
-import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.Newtype (class Newtype)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (RE, Thread(..), ThreadId(..), alt, app, eps, fail, fmap, rep, runFoldRE, runFoldRE_, symbol, threadId, void)
-import Prelude (Unit, bind, discard, flip, ($), (+), (<<<))
+import Data.Regex.Applicative.Types (RE, Thread(Accept, Thread), ThreadId(ThreadId), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, mkVoid, runFoldRE)
+import Prelude (bind, discard, flip, ($), (+), (<<<))
 
 -- | The state of the engine is represented as a \"regex object\" of type
 -- @'ReObject' s r@, where @s@ is the type of symbols and @r@ is the
@@ -131,14 +130,14 @@ renumber e =
     go1 x = case go x of R r -> r
     go :: forall t b. RE t b -> R t b
     go = runFoldRE {
-        eps: R $ pure eps,
-        symbol: \_ p -> R $ symbol <$> fresh <*> pure p,
-        alt: \a1 a2 -> R $ alt <$> go1 a1 <*> go1 a2,
-        app: \a1 a2 -> R $ app <$> go1 a1 <*> go1 a2,
-        fail: R $ pure fail,
-        fmap: \f a -> R $ fmap f <$> go1 a,
-        rep: \g f b a -> R $ rep g f b <$> go1 a,
-        void: \a -> R $ void <$> go1 a
+        eps: R $ pure mkEps,
+        symbol: \_ p -> R $ mkSymbol <$> fresh <*> pure p,
+        alt: \a1 a2 -> R $ mkAlt <$> go1 a1 <*> go1 a2,
+        app: \a1 a2 -> R $ mkApp <$> go1 a1 <*> go1 a2,
+        fail: R $ pure mkFail,
+        fmap: \f a -> R $ mkFmap f <$> go1 a,
+        rep: \g f b a -> R $ mkRep g f b <$> go1 a,
+        void: \a -> R $ mkVoid <$> go1 a
     }
   in
     flip evalState (ThreadId (pure 1)) $ go1 e

@@ -1,18 +1,17 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative (class Alt, class Alternative, class Plus, (<$>), (<|>))
+import Control.Alternative ((<|>))
 import Control.Lazy (defer)
-import Control.Monad.Eff.Console (error)
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Data.Array (cons, foldl, head, init, reverse, uncons)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor.Strong (second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread(..), alt, app, eps, fail, fmap, rep, runFoldRE, symbol)
+import Data.Regex.Applicative.Types (Greediness(NonGreedy), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, runFoldRE)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
-import Prelude (class Applicative, class Apply, class Eq, class Functor, Ordering(..), compare, const, flip, id, map, not, unit, ($), (#), (&&), (+), (<$>), (<*>), (<<<), (<>), (==), (>>>))
+import Prelude (class Eq, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==), (>>>))
 
 
 
@@ -23,20 +22,6 @@ import Prelude (class Applicative, class Apply, class Eq, class Functor, Orderin
 -- instance (char ~ Char, string ~ String) => IsString (RE char string) where
 --   fromString = string
 
--- | 'RE' is a profunctor. This is its contravariant map.
---
--- (A dependency on the @profunctors@ package doesn't seem justified.)
--- comap :: (s2 -> s1) -> RE s1 a -> RE s2 a
--- comap f re =
---   case re of
---     Eps -> Eps
---     Symbol t p    -> Symbol t (p . f)
---     Alt r1 r2     -> Alt (comap f r1) (comap f r2)
---     App r1 r2     -> App (comap f r1) (comap f r2)
---     Fmap g r      -> Fmap g (comap f r)
---     Fail          -> Fail
---     Rep gr fn a r -> Rep gr fn a (comap f r)
---     Void r        -> Void (comap f r)
 
 -- | Match and return a single symbol which satisfies the predicate
 psym :: forall s. (s -> Boolean) -> RE s s
@@ -45,8 +30,7 @@ psym p = msym (\s -> if p s then Just s else Nothing)
 -- | Like 'psym', but allows to return a computed value instead of the
 -- original symbol
 msym :: forall s a. (s -> Maybe a) -> RE s a
--- TODO: well this'll crash
-msym p = symbol (defer \_ -> unsafeThrow "Not numbered symbol") p
+msym p = mkSymbol (defer \_ -> unsafeThrow "Not numbered symbol") p
 
 -- | Match and return the given symbol
 sym :: forall s. Eq s => s -> RE s s
@@ -79,8 +63,13 @@ string = traverse sym
 -- 'Greediness' argument controls whether this regular expression should match
 -- as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
 -- of the underlying expression.
-reFoldl :: forall s a b. Greediness -> (b -> a -> b) -> b -> RE s a -> RE s b
-reFoldl g f b a = rep g f b a
+reFoldl :: forall s a b.
+           Greediness ->
+           (b -> a -> b) ->
+           b ->
+           RE s a ->
+           RE s b
+reFoldl g f b a = mkRep g f b a
 
 -- | Match zero or more instances of the given expression, but as
 -- few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
@@ -93,7 +82,7 @@ reFoldl g f b a = rep g f b a
 -- >Text.Regex.Applicative> findFirstPrefix (many anySym  <* "b") "ababab"
 -- >Just ("ababa","")
 few :: forall s a. RE s a -> RE s (Array a)
-few a = reverse <$> rep NonGreedy (flip cons) [] a
+few a = reverse <$> mkRep NonGreedy (flip cons) [] a
 
 
 -- helper
@@ -105,16 +94,16 @@ withMatched :: forall s a. RE s a -> RE s (Tuple a (Array s))
 withMatched = go >>> unwrap where
   go :: RE s a -> R s a
   go = runFoldRE {
-          eps: R $ flip Tuple [] <$> eps,
-          symbol: \t p -> R $ symbol t (\s -> (flip Tuple [s]) <$> p s),
+          eps: R $ flip Tuple [] <$> mkEps,
+          symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple [s]) <$> p s),
           alt: \a b -> R $ withMatched a <|> withMatched b,
           app: \a b -> R $ (\(Tuple f s) (Tuple x t) -> (Tuple (f x) (s <> t))) <$>
                   withMatched a <*>
                   withMatched b,
           fmap: \f x -> R $ (f *** id) <$> withMatched x,
-          fail: R $ fail,
+          fail: R $ mkFail,
           rep: \gr f a0 x ->
-            R $ rep gr
+            R $ mkRep gr
                 (\(Tuple a s) (Tuple x t) -> (Tuple (f a x) (s <> t)))
                 (Tuple a0 [])
                 (withMatched x),

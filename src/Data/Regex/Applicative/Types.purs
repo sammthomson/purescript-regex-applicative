@@ -7,14 +7,14 @@ module Data.Regex.Applicative.Types (
   ThreadId(..),
   mkThread,
   threadId,
-  eps,
-  symbol,
-  alt,
-  app,
-  fmap,
-  fail,
-  rep,
-  void,
+  mkEps,
+  mkSymbol,
+  mkAlt,
+  mkApp,
+  mkFmap,
+  mkFail,
+  mkRep,
+  mkVoid,
   runFoldRE,
   runFoldRE_
 ) where
@@ -28,6 +28,7 @@ import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Lazy (Lazy, defer, force)
 import Data.Newtype (class Newtype)
+import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, Unit, const, unit, ($), (<<<))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -106,40 +107,57 @@ instance lazyRE :: Z.Lazy (RE s a) where
   defer f = RE $ defer \_ -> case f unit of RE x -> force x
 
 -- don't export me
-re :: forall s a b. RE' s a b -> RE s a
-re = RE <<< pure <<< mkExists
+mkRE :: forall s a b. RE' s a b -> RE s a
+mkRE = RE <<< pure <<< mkExists
 
 -- safe constructors
 
-eps :: forall s. RE s Unit
-eps = re Eps
+mkEps :: forall s. RE s Unit
+mkEps = mkRE Eps
 
-symbol :: forall s a. ThreadId -> (s -> Maybe a) -> RE s a
-symbol i f = re $ Symbol i f
+mkSymbol :: forall s a. ThreadId -> (s -> Maybe a) -> RE s a
+mkSymbol i f = mkRE $ Symbol i f
 
-alt :: forall s a. RE s a -> RE s a -> RE s a
-alt ma mb = re $ Alt ma mb
+mkAlt :: forall s a. RE s a -> RE s a -> RE s a
+mkAlt ma mb = mkRE $ Alt ma mb
 
-app :: forall s a b. RE s (b -> a) -> RE s b -> RE s a
-app mf mx = re $ App mf mx
+mkApp :: forall s a b. RE s (b -> a) -> RE s b -> RE s a
+mkApp mf mx = mkRE $ App mf mx
 
-fmap :: forall s a b. (b -> a) -> RE s b -> RE s a
-fmap f x = re $ Fmap f x
+mkFmap :: forall s a b. (b -> a) -> RE s b -> RE s a
+mkFmap f x = mkRE $ Fmap f x
 
-fail :: forall s a. RE s a
-fail = re Fail
+mkFail :: forall s a. RE s a
+mkFail = mkRE Fail
 
-rep :: forall s a b.
-    Greediness       -- repetition may be greedy or not
-    -> (a -> b -> a) -- folding function (like in foldl)
-    -> a             -- the value for zero matches, and also the initial value
-                     -- for the folding function
-    -> RE s b
-    -> RE s a
-rep g op z x = re $ Rep g op z x
+mkRep :: forall s a b.
+         Greediness       -- repetition may be greedy or not
+         -> (a -> b -> a) -- folding function (like in foldl)
+         -> a             -- the value for zero matches, and also the initial value
+                          -- for the folding function
+         -> RE s b
+         -> RE s a
+mkRep g op z x = mkRE $ Rep g op z x
 
-void :: forall s a. RE s a -> RE s Unit
-void x = re $ Void x
+mkVoid :: forall s a. RE s a -> RE s Unit
+mkVoid x = mkRE $ Void x
+
+
+-- -- | 'RE' is a profunctor. This is its contravariant map.
+-- comapRe :: forall s1 s2 a1 a2. (s2 -> s1) -> (a1 -> a2) -> RE s1 a1 -> RE s2 a2
+-- comapRe f = runFoldRE {
+--     eps:               mkEps,
+--     symbol: \t p    -> mkSymbol t (p <<< f),
+--     alt: \r1 r2     -> mkAlt (comapRe f r1) (comapRe f r2),
+--     app: \r1 r2     -> mkApp (comapRe f r1) (comapRe f r2),
+--     fmap: \g r      -> mkFmap g (comapRe f r),
+--     fail:              mkFail,
+--     rep: \gr fn a r -> mkRep gr fn a (comapRe f r),
+--     void: \r        -> mkVoid (comapRe f r)
+--   }
+
+-- instance profunctorRe :: Profunctor (RE s a) where
+--   dimap = comapRe
 
 -- for pattern matching where we want to remember that `a = Unit` for Eps and Void.
 type FoldRE s a t = {
@@ -203,18 +221,18 @@ runFoldRE_ :: forall s a r. FoldRE_ s a r -> RE s a -> r
 runFoldRE_ fld (RE re) = runExists (runFoldRE_' fld) $ force re
 
 instance functorRe :: Functor (RE s) where
-  map f x = fmap f x
+  map f x = mkFmap f x
 
 instance applyRe :: Apply (RE s) where
-  apply mf mx = app mf mx
+  apply mf mx = mkApp mf mx
 
 instance applicativeRe :: Applicative (RE s) where
-  pure x = const x <$> eps
+  pure x = const x <$> mkEps
 
 instance altRe :: Alt (RE s) where
-  alt a1 a2 = alt a1 a2
+  alt a1 a2 = mkAlt a1 a2
 
 instance plusRe :: Plus (RE s) where
-  empty = fail
+  empty = mkFail
 
 instance alternativeRe :: Alternative (RE s)
