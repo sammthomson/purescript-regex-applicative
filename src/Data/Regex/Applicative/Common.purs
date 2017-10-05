@@ -1,6 +1,6 @@
 -- |
 -- Collection of commonly used regular expressions.
-module Text.Regex.Applicative.Common (
+module Data.Regex.Applicative.Common (
     -- * Digits
     -- digit
     hexDigit
