@@ -132,7 +132,7 @@ match re =
   let
     obj = compile re
   in
-    \str -> head $ results $ foldl (flip step) obj str
+    \s -> head $ results $ foldl (flip step) obj s
 
 -- | Find a string prefix which is matched by the regular expression.
 --
@@ -153,7 +153,7 @@ match re =
 -- >Text.Regex.Applicative> findFirstPrefix "bc" "abc"
 -- >Nothing
 findFirstPrefix :: forall s a. RE s a -> List s -> Maybe (Tuple a (List s))
-findFirstPrefix re str = go (compile re) str Nothing
+findFirstPrefix re s = go (compile re) s Nothing
   where
   walk obj lst = case uncons lst of
     Nothing -> Tuple obj Nothing
@@ -162,13 +162,13 @@ findFirstPrefix re str = go (compile re) str Nothing
         Just r -> Tuple obj $ Just r
         Nothing -> walk (addThread head obj) tail
 
-  go obj str resOld =
+  go obj s' resOld =
     case walk emptyObject $ threads obj of
       (Tuple obj' resThis) ->
         let
-          res = ((flip Tuple str) <$> resThis) <|> resOld
+          res = ((flip Tuple s') <$> resThis) <|> resOld
         in
-          case uncons str of
+          case uncons s' of
             _ | failed obj' -> res
             Nothing -> res
             Just { head, tail } -> go (step head obj') tail res
@@ -190,26 +190,26 @@ findFirstPrefix re str = go (compile re) str Nothing
 -- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "iffoo"
 -- >Just (Right "iffoo","")
 findLongestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
-findLongestPrefix re str = go (compile re) str Nothing
+findLongestPrefix re s = go (compile re) s Nothing
   where
-  go obj str resOld =
-    let res = (map (flip Tuple str) $ head $ results obj) <|> resOld
+  go obj s' resOld =
+    let res = (map (flip Tuple s') $ head $ results obj) <|> resOld
     in
-      case uncons str of
+      case uncons s' of
         _ | failed obj -> res
         Nothing -> res
         Just { head, tail } -> go (step head obj) tail res
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
 findShortestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
-findShortestPrefix re str = go (compile re) str
+findShortestPrefix re s = go (compile re) s
   where
-  go obj str =
+  go obj s' =
     case uncons $ results obj of
-      Just { head } -> Just (Tuple head str)
+      Just { head } -> Just (Tuple head s')
       _ | failed obj -> Nothing
       _ ->
-        case uncons str of
+        case uncons s' of
           Nothing -> Nothing
           Just { head, tail } -> go (step head obj) tail
 
@@ -217,9 +217,9 @@ findShortestPrefix re str = go (compile re) str
 -- Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
 findFirstInfix :: forall s a. RE s a -> (List s) -> Maybe (Tuple (List s) (Tuple a (List s)))
-findFirstInfix re str =
+findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
-  findFirstPrefix (Tuple <$> few anySym <*> re) str
+  findFirstPrefix (Tuple <$> few anySym <*> re) s
 
 -- Auxiliary function for findExtremeInfix
 prefixCounter :: forall s. RE s (Tuple Int (List s))
@@ -284,8 +284,8 @@ findExtremalInfix :: forall s a.
   -> RE s a
   -> List s
   -> Maybe (Tuple (List s) (Tuple a (List s)))
-findExtremalInfix newOrOld re str =
-  case go (compile $ Tuple <$> prefixCounter <*> re) str NoResult of
+findExtremalInfix newOrOld re s =
+  case go (compile $ Tuple <$> prefixCounter <*> re) s NoResult of
     NoResult -> Nothing
     GotResult r ->
       Just (Tuple (r.prefixStr) (Tuple (r.result) (r.postfixStr)))
@@ -294,10 +294,10 @@ findExtremalInfix newOrOld re str =
     --       -> List s
     --       -> InfixMatchingState s a
     --       -> InfixMatchingState s a
-    go obj str resOld =
+    go obj s' resOld =
       let
         resThis = foldl
-            (\acc t -> acc `preferOver` mkInfixMatchingState str t)
+            (\acc t -> acc `preferOver` mkInfixMatchingState s' t)
             NoResult $
             threads obj
         res = resThis `newOrOld` resOld
@@ -308,7 +308,7 @@ findExtremalInfix newOrOld re str =
             then fromMaybe obj $ fromThreads <$> (init $ threads obj)
             else obj
       in
-        case uncons str of
+        case uncons s' of
           Nothing -> res
           _ | failed obj -> res
           Just { head, tail } -> go (step head obj') tail res
