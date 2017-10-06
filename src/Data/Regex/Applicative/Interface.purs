@@ -3,29 +3,22 @@ module Data.Regex.Applicative.Interface where
 import Control.Alternative ((<|>))
 import Control.Lazy (defer)
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
-import Data.Array (toUnfoldable)
-import Data.List.Lazy (List, cons, foldl, head, init, nil, reverse, uncons, (:))
+import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, runFoldRE)
 import Data.String (toCharArray)
-import Data.Traversable (traverse)
+import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(..), swap)
 import Prelude (class Eq, class Semigroup, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
--- many v = some v <|> pure []
 many :: forall a c. RE c a -> RE c (List a)
 many v = reverse <$> mkRep Greedy (flip (:)) nil v
 
--- some v = (:) <$> v <*> defer (\_ -> many v)
 some :: forall c a. RE c a -> RE c (List a)
 some v = (:) <$> v <*> defer (\_ -> many v)
-
--- instance (char ~ Char, string ~ String) => IsString (RE char string) where
---   fromString = string
-
 
 -- | Match and return a single symbol which satisfies the predicate
 psym :: forall s. (s -> Boolean) -> RE s s
@@ -48,7 +41,7 @@ anySym = msym Just
 --
 -- Note that there is an 'IsString' instance for regular expression, so
 -- if you enable the @OverloadedStrings@ language extension, you can write
--- @string \"foo\"@ simply as @\"foo\"@.
+-- @str \"foo\"@ simply as @\"foo\"@.
 --
 -- Example:
 --
@@ -58,11 +51,11 @@ anySym = msym Just
 -- >number = "one" *> pure 1  <|>  "two" *> pure 2
 -- >
 -- >main = print $ "two" =~ number
-array :: forall a. Eq a => List a -> RE a (List a)
-array = traverse sym
+arr :: forall a t. Eq a => Traversable t => t a -> RE a (t a)
+arr = traverse sym
 
-string :: String -> RE Char (List Char)
-string = array <<< toUnfoldable <<< toCharArray
+str :: String -> RE Char (List Char)
+str s = fromFoldable <$> (arr $ toCharArray s)
 
 -- | Match zero or more instances of the given expression, which are combined using
 -- the given folding function.
@@ -119,7 +112,7 @@ withMatched r = case go r of R r' -> r' where
         }
 
 -- | @s =~ a = match a s@
-matchFlipped :: forall s a. (List s) -> RE s a -> Maybe a
+matchFlipped :: forall s a t. Foldable t => t s -> RE s a -> Maybe a
 matchFlipped = flip match
 
 infixl 2 matchFlipped as =~
@@ -134,7 +127,7 @@ infixl 2 matchFlipped as =~
 -- >Text.Regex.Applicative> match (sym 'a' <|> sym 'b') "ab"
 -- >Nothing
 --
-match :: forall s a. RE s a -> List s -> Maybe a
+match :: forall s a t. Foldable t => RE s a -> t s -> Maybe a
 match re =
   let
     obj = compile re

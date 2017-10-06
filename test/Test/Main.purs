@@ -1,49 +1,52 @@
 module Test.Main where
 
-
-
 import Control.Alt ((<|>))
 import Control.Monad.Eff (Eff)
+import Control.Monad.Gen (elements)
 import Control.Plus (empty)
 import Data.List.Lazy (List, concat, fromFoldable, nil, (:))
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (class Newtype, unwrap)
-import Data.Regex.Applicative (RE, few, many, findFirstPrefix, string, sym, withMatched, (=~))
+import Data.NonEmpty ((:|))
+import Data.Regex.Applicative (RE, few, many, findFirstPrefix, str, sym, withMatched, (=~))
 import Data.String (toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Prelude (class Eq, class Show, Unit, discard, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
-import Test.QuickCheck (Result(..), (==?))
+import Test.QuickCheck (class Arbitrary, Result(Success), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
 import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck)
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 
--- Small alphabets as SmallCheck's series
+
+-- Small alphabets
 newtype A = A Char
 derive instance newtypeA :: Newtype A _
-instance showA :: Show A where
-  show (A a) = "(A " <> show a <> ")"
-
--- instance monadSerialA :: Monad m => Serial m A where
---   series = cons0 $ A 'a'
+derive newtype instance showA :: Show A
+instance arbA :: Arbitrary A where
+  arbitrary = elements $ A 'a' :| []
+unA :: A -> Char
+unA = unwrap
 
 newtype AB = AB Char
 derive instance newtypeAB :: Newtype AB _
-instance showAB :: Show AB where
-  show (AB x) = "(AB " <> show x <> ")"
-
--- instance monadSerialAB :: Monad m => Serial m AB where
---   series = cons0 (AB 'a') \/ cons0 (AB 'b')
+derive newtype instance showAB :: Show AB
+instance arbAB :: Arbitrary AB where
+  arbitrary = elements $ AB 'a' :| [AB 'b']
+unAB :: AB -> Char
+unAB = unwrap
 
 newtype ABC = ABC Char
 derive instance newtypeABC :: Newtype ABC _
-instance showABC :: Show ABC where
-  show (ABC x) = "(ABC " <> show x <> ")"
+derive newtype instance showABC :: Show ABC
+instance arbABC :: Arbitrary ABC where
+  arbitrary = elements $ ABC 'a' :| [ABC 'b', ABC 'c']
+unABC :: ABC -> Char
+unABC = unwrap
 
--- instance monadSerialABC :: Monad m => Serial m ABC where
---   series = cons0 (ABC 'a') \/ cons0 (ABC 'b') \/ cons0 (ABC 'c')
+-- Example Regexes
 
 re1 :: RE Char (Tuple Int Int)
 re1 =
@@ -106,27 +109,27 @@ re9 = many (sym 'a' <|> empty) <* sym 'b'
 re10 :: RE Char (List Char)
 re10 = few (sym 'a' <|> empty) <* sym 'b'
 
--- prop :: RE Char a -> (a -> b)
-prop :: forall c b a. Eq b => Show b => RE a b -> (c -> a) -> List c -> Result
+prop :: forall c b a. Eq b => Show b =>
+        RE a b ->
+        (c -> a) ->
+        Array c ->
+        Result
 prop re f s =
   let
-    fs = map f s
+    fs = map f (fromFoldable s)
   in
     reference re fs ==? (fs =~ re)
 
-prop_withMatched :: List A -> Result
+prop_withMatched :: Array AB -> Result
 prop_withMatched =
   let
-    -- re = withMatched $ string "a" <|> string "ba"
-    re = withMatched $ many (string "a" <|> string "ba")
+    re = withMatched $ many (str "a" <|> str "ba")
   in
-    \str ->
-      case map unwrap str =~ re of
+    \s ->
+      case map unAB s =~ re of
         Nothing -> Success
         Just (Tuple x y) -> concat x ==? y
 
--- -- data Test = Test String 
--- -- data TestGroup = TestGroup String (List Test)
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
 -- we test that they agree
@@ -142,33 +145,33 @@ main :: forall e. Eff (QCRunnerEffects e) Unit
 main = run [consoleReporter] $ do
   describe "Tests" $ do
     -- describe "Engine tests" $ do
-    --   it "re1" $ quickCheck $ prop re1 unwrap
-    --   it "re2" $ quickCheck $ prop re2 unwrap
-    --   it "re3" $ quickCheck $ prop re3 unwrap
-    --   it "re4" $ quickCheck $ prop re4 unwrap
-    --   it "re5" $ quickCheck $ prop re5 unwrap
-    --   it "re6" $ quickCheck $ prop re6 unwrap
-    --   it "re7" $ quickCheck $ prop re7 unwrap
-    --   it "re8" $ quickCheck $ prop re8 unwrap
-    -- describe "Recognition vs parsing" $ do
-    --   it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unwrap
-    --   it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unwrap
-    --   it "re3" $ quickCheck $ testRecognitionAgainstParsing re3 unwrap
-    --   it "re4" $ quickCheck $ testRecognitionAgainstParsing re4 unwrap
-    --   it "re5" $ quickCheck $ testRecognitionAgainstParsing re5 unwrap
-    --   it "re6" $ quickCheck $ testRecognitionAgainstParsing re6 unwrap
-    --   it "re7" $ quickCheck $ testRecognitionAgainstParsing re7 unwrap
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re8 unwrap
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unwrap
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unwrap
-    --   it "withMatched" $ quickCheck prop_withMatched
+    --   it "re1" $ quickCheck $ prop re1 unA
+    --   it "re2" $ quickCheck $ prop re2 unAB
+    --   it "re3" $ quickCheck $ prop re3 unAB
+    --   it "re4" $ quickCheck $ prop re4 unAB
+    --   it "re5" $ quickCheck $ prop re5 unA
+    --   it "re6" $ quickCheck $ prop re6 unA
+    --   it "re7" $ quickCheck $ prop re7 unAB
+    --   it "re8" $ quickCheck $ prop re8 unAB
+    describe "Recognition vs parsing" $ do
+    --   it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unA
+    --   it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unAB
+    --   it "re3" $ quickCheck $ testRecognitionAgainstParsing re3 unAB
+    --   it "re4" $ quickCheck $ testRecognitionAgainstParsing re4 unAB
+    --   it "re5" $ quickCheck $ testRecognitionAgainstParsing re5 unA
+    --   it "re6" $ quickCheck $ testRecognitionAgainstParsing re6 unA
+    --   it "re7" $ quickCheck $ testRecognitionAgainstParsing re7 unABC
+    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re8 unABC
+    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
+    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
+      it "withMatched" $ quickCheck prop_withMatched
     describe "Tests for matching functions" $ do
       describe "findFirstPrefix" $ do
         it "t1" $ quickCheck $
-            (findFirstPrefix (string "a" <|> string "ab") (fromFoldable $ toCharArray "abc")) ==?
+            (findFirstPrefix (str "a" <|> str "ab") (fromFoldable $ toCharArray "abc")) ==?
             (Just (Tuple ('a' : nil) ('b' : 'c' : nil)))
         it "t2" $ quickCheck $
-            (findFirstPrefix (string "ab" <|> string "a") (fromFoldable $ toCharArray "abc")) ==?
+            (findFirstPrefix (str "ab" <|> str "a") (fromFoldable $ toCharArray "abc")) ==?
             (Just (Tuple ('a' : 'b' : nil) ('c' : nil)))
       --   it "t3" $ quickCheck $
       --       (findFirstPrefix "bc" "abc") ==?

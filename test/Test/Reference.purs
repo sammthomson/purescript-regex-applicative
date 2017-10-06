@@ -29,8 +29,6 @@ import Prelude (class Functor, bind, const, flip, unit, ($), (<<<), (<>))
 -- A simple parsing monad
 newtype P s a = P (List s -> List (Tuple a (List s)))
 
--- derive newtype instance functorP :: Functor (P s)
-
 instance functorP :: Functor (P s) where
   map = liftM1
 
@@ -49,7 +47,6 @@ instance monadP :: Monad (P s)
 instance altP :: Alt (P s) where
   alt (P a1) (P a2) =
     P \s -> a1 s <> a2 s
-
 
 instance plusP :: Plus (P s) where
   empty = P $ const nil

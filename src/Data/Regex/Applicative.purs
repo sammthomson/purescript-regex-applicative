@@ -33,7 +33,7 @@ import Data.Regex.Applicative.Interface (
   , psym
   , msym
   , anySym
-  , string
+  , str
   , reFoldl
   , few
   , some
