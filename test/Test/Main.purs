@@ -133,7 +133,7 @@ prop_withMatched =
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
 -- we test that they agree
-testRecognitionAgainstParsing :: forall a b c. RE a b -> (c -> a) -> List c -> Result
+testRecognitionAgainstParsing :: forall a b c. RE a b -> (c -> a) -> Array c -> Result
 testRecognitionAgainstParsing re f s =
   let
     fs = map f s
@@ -154,16 +154,16 @@ main = run [consoleReporter] $ do
     --   it "re7" $ quickCheck $ prop re7 unAB
     --   it "re8" $ quickCheck $ prop re8 unAB
     describe "Recognition vs parsing" $ do
-    --   it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unA
-    --   it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unAB
-    --   it "re3" $ quickCheck $ testRecognitionAgainstParsing re3 unAB
-    --   it "re4" $ quickCheck $ testRecognitionAgainstParsing re4 unAB
-    --   it "re5" $ quickCheck $ testRecognitionAgainstParsing re5 unA
-    --   it "re6" $ quickCheck $ testRecognitionAgainstParsing re6 unA
-    --   it "re7" $ quickCheck $ testRecognitionAgainstParsing re7 unABC
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re8 unABC
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
-    --   it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
+      it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unA
+      it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unAB
+      it "re3" $ quickCheck $ testRecognitionAgainstParsing re3 unAB
+      it "re4" $ quickCheck $ testRecognitionAgainstParsing re4 unAB
+      it "re5" $ quickCheck $ testRecognitionAgainstParsing re5 unA
+      it "re6" $ quickCheck $ testRecognitionAgainstParsing re6 unA
+      it "re7" $ quickCheck $ testRecognitionAgainstParsing re7 unABC
+      it "re8" $ quickCheck $ testRecognitionAgainstParsing re8 unABC
+      it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
+      it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
       it "withMatched" $ quickCheck prop_withMatched
     describe "Tests for matching functions" $ do
       describe "findFirstPrefix" $ do
