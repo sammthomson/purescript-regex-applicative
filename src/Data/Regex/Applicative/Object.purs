@@ -29,9 +29,9 @@ import Data.Maybe
 import Control.Applicative (pure, (<$>), (<*>))
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.State (State, evalState, get, put)
-import Data.Array (fromFoldable, mapMaybe, null)
 import Data.Foldable (foldl)
 import Data.Lazy (force)
+import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
 import Data.Newtype (class Newtype)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
@@ -46,13 +46,13 @@ import Prelude (bind, discard, flip, ($), (+), (<<<))
 newtype ReObject s r = ReObject (SQ.StateQueue (Thread s r))
 
 -- | List of all threads of an object. Each non-result thread has a unique id.
-threads :: forall s r. ReObject s r -> Array (Thread s r)
+threads :: forall s r. ReObject s r -> List (Thread s r)
 threads (ReObject sq) = fromFoldable sq
 
 -- | Create an object from a list of threads. It is recommended that all
 -- threads come from the same 'ReObject', unless you know what you're doing.
 -- However, it should be safe to filter out or rearrange threads.
-fromThreads :: forall s r. Array (Thread s r) -> ReObject s r
+fromThreads :: forall s r. List (Thread s r) -> ReObject s r
 fromThreads ts = foldl (flip addThread) emptyObject ts
 
 -- | Check whether a thread is a result thread
@@ -76,7 +76,7 @@ emptyObject :: forall s r. ReObject s r
 emptyObject = ReObject $ SQ.empty
 
 -- | Extract the result values from all the result threads of an object
-results :: forall s r. ReObject s r -> Array r
+results :: forall s r. ReObject s r -> List r
 results obj =
   mapMaybe getResult $ threads obj
 
@@ -95,7 +95,7 @@ step s (ReObject sq) =
 
 -- | Feed a symbol into a non-result thread. It is an error to call 'stepThread'
 -- on a result thread.
-stepThread :: forall s r. s -> Thread s r -> Array (Thread s r)
+stepThread :: forall s r. s -> Thread s r -> List (Thread s r)
 stepThread s t =
   case t of
     Thread { threadId_: _, _threadCont: c } -> c s
@@ -108,15 +108,15 @@ stepThread s t =
 -- object is not changed.
 addThread :: forall s r. Thread s r -> ReObject s r -> ReObject s r
 addThread t (ReObject q) =
-  case t of
-    Accept _ -> ReObject $ SQ.insert t q
-    Thread { threadId_: ThreadId i } -> ReObject $ SQ.insertUnique (force i) t q
+  ReObject $ case t of
+              Accept _ -> SQ.insert t q
+              Thread { threadId_: ThreadId i } -> SQ.insertUnique (force i) t q
 
 -- | Compile a regular expression into a regular expression object
 compile :: forall s r. RE s r -> ReObject s r
 compile =
   fromThreads <<<
-  flip Compile.compile (\x -> [Accept x]) <<<
+  flip Compile.compile (\x -> Accept x : nil) <<<
   renumber
 
 -- help type inference out

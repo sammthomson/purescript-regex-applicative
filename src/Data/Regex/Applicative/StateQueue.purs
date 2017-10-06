@@ -6,24 +6,32 @@ module Data.Regex.Applicative.StateQueue
   , insert
   , insertUnique
   , getElements
+  , mkStateQueue
   ) where
 
-import Data.Array (cons, reverse)
+import Data.List.Lazy (List, cons, nil, reverse)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
-import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.Newtype (class Newtype, unwrap)
 import Data.Set as S
-import Prelude (class Eq, ($), (<<<))
+import Prelude (class Eq, class Show, show, ($), (<<<), (<>))
 
 -- | 'StateQueue' is a data structure that can efficiently insert elements
 -- (preserving their order)
 -- and check whether an element with the given 'Int' key is already in the queue.
 newtype StateQueue a = StateQueue {
-  elements :: Array a,
+  elements :: List a,
   ids :: S.Set Int
 }
 
+mkStateQueue :: forall a. List a -> S.Set Int -> StateQueue a
+mkStateQueue elements ids = StateQueue { elements, ids}
+
 derive instance newtypeStateQueue :: Newtype (StateQueue a) _
 derive instance eqStateQueue :: Eq a => Eq (StateQueue a)
+instance showStateQueue :: Show a => Show (StateQueue a) where
+  show (StateQueue { elements, ids }) =
+    "(StateQueue { elements: " <> show elements <> ", " <> show ids <> " })"
+
 -- instance showStateQueue :: Show StateQueue where
 --   show
   
@@ -34,18 +42,16 @@ instance foldableStateQueue :: Foldable StateQueue where
   foldMap f = foldMap f <<< getElements
 
 -- | Get the list of all elements
-getElements :: forall a. StateQueue a -> Array a
+getElements :: forall a. StateQueue a -> List a
 getElements = reverse <<< _.elements <<< unwrap
 
-{-# INLINE empty #-}
 -- | The empty state queue
 empty :: forall a. StateQueue a
-empty = wrap {
-  elements: [],
+empty = StateQueue {
+  elements: nil,
   ids: S.empty
 }
 
-{-# INLINE insert #-}
 -- | Insert an element in the state queue, unless there is already an element with the same key
 insertUnique :: forall a.
                 Int -- ^ key

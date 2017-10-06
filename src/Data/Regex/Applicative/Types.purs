@@ -19,14 +19,14 @@ module Data.Regex.Applicative.Types (
   runFoldRE_
 ) where
 
-import Data.Maybe
-
 import Control.Alt (class Alt, (<$>))
 import Control.Alternative (class Alternative, pure)
 import Control.Lazy as Z
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Lazy (Lazy, defer, force)
+import Data.List.Lazy (List)
+import Data.Maybe
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, Unit, const, unit, ($), (<<<))
@@ -41,11 +41,11 @@ instance lazyThreadId :: Z.Lazy ThreadId where
 data Thread s r =
   Thread
     { threadId_ :: ThreadId
-    , _threadCont :: s -> Array (Thread s r)
+    , _threadCont :: s -> List (Thread s r)
     }
   | Accept r
 
-mkThread :: forall s r. ThreadId -> (s -> Array (Thread s r)) -> Thread s r
+mkThread :: forall s r. ThreadId -> (s -> List (Thread s r)) -> Thread s r
 mkThread i c = Thread { threadId_: i, _threadCont: c }
 
 -- | Returns thread identifier. This will be 'Just' for ordinary threads and

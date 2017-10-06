@@ -34,6 +34,7 @@
   "license": "MIT",
   "private": true,
   "devDependencies": {
-    "purescript-psci-support": "^3.0.0"
+    "purescript-psci-support": "^3.0.0",
+    "purescript-spec-quickcheck": "^1.0.0"
   }
 }

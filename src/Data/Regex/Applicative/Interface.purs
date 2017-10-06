@@ -3,21 +3,25 @@ module Data.Regex.Applicative.Interface where
 import Control.Alternative ((<|>))
 import Control.Lazy (defer)
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
-import Data.Array (cons, foldl, head, init, reverse, uncons)
+import Data.Array (toUnfoldable)
+import Data.List.Lazy (List, cons, foldl, head, init, nil, reverse, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor.Strong (second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(NonGreedy), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, runFoldRE)
+import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, runFoldRE)
+import Data.String (toCharArray)
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..))
-import Prelude (class Eq, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==), (>>>))
+import Data.Tuple (Tuple(..), swap)
+import Prelude (class Eq, class Semigroup, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
+-- many v = some v <|> pure []
+many :: forall a c. RE c a -> RE c (List a)
+many v = reverse <$> mkRep Greedy (flip (:)) nil v
 
-  -- empty = Fail
-  -- many a = reverse <$> Rep Greedy (flip (:)) [] a
-  -- some a = (:) <$> a <*> many a
+-- some v = (:) <$> v <*> defer (\_ -> many v)
+some :: forall c a. RE c a -> RE c (List a)
+some v = (:) <$> v <*> defer (\_ -> many v)
 
 -- instance (char ~ Char, string ~ String) => IsString (RE char string) where
 --   fromString = string
@@ -54,8 +58,11 @@ anySym = msym Just
 -- >number = "one" *> pure 1  <|>  "two" *> pure 2
 -- >
 -- >main = print $ "two" =~ number
-string :: forall a. Eq a => Array a -> RE a (Array a)
-string = traverse sym
+array :: forall a. Eq a => List a -> RE a (List a)
+array = traverse sym
+
+string :: String -> RE Char (List Char)
+string = array <<< toUnfoldable <<< toCharArray
 
 -- | Match zero or more instances of the given expression, which are combined using
 -- the given folding function.
@@ -81,38 +88,38 @@ reFoldl g f b a = mkRep g f b a
 -- >Just ("a","abab")
 -- >Text.Regex.Applicative> findFirstPrefix (many anySym  <* "b") "ababab"
 -- >Just ("ababa","")
-few :: forall s a. RE s a -> RE s (Array a)
-few a = reverse <$> mkRep NonGreedy (flip cons) [] a
+few :: forall s a. RE s a -> RE s (List a)
+few a = reverse <$> mkRep NonGreedy (flip cons) nil a
 
 
 -- helper
-newtype R s a = R (RE s (Tuple a (Array s)))
-derive instance newtypeR :: Newtype (R s a) _
+newtype R s a = R (RE s (Tuple a (List s)))
 
 -- | Return matched symbols as part of the return value
-withMatched :: forall s a. RE s a -> RE s (Tuple a (Array s))
-withMatched = go >>> unwrap where
+withMatched :: forall s a. RE s a -> RE s (Tuple a (List s))
+withMatched r = case go r of R r' -> r' where
+  applyTuple :: forall x y z. Semigroup z => Tuple (x -> y) z -> Tuple x z -> Tuple y z
+  applyTuple f x = swap $ swap f <*> swap x
   go :: RE s a -> R s a
   go = runFoldRE {
-          eps: R $ flip Tuple [] <$> mkEps,
-          symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple [s]) <$> p s),
+          eps: R $ flip Tuple nil <$> mkEps,
+          symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
           alt: \a b -> R $ withMatched a <|> withMatched b,
-          app: \a b -> R $ (\(Tuple f s) (Tuple x t) -> (Tuple (f x) (s <> t))) <$>
-                  withMatched a <*>
-                  withMatched b,
+          app: \a b -> R $ applyTuple <$> withMatched a
+                                      <*> withMatched b,
           fmap: \f x -> R $ (f *** id) <$> withMatched x,
           fail: R $ mkFail,
           rep: \gr f a0 x ->
             R $ mkRep gr
                 (\(Tuple a s) (Tuple x t) -> (Tuple (f a x) (s <> t)))
-                (Tuple a0 [])
+                (Tuple a0 nil)
                 (withMatched x),
           -- N.B.: this ruins the Void optimization
           void: \x -> R $ (const unit *** id) <$> withMatched x
         }
 
 -- | @s =~ a = match a s@
-matchFlipped :: forall s a. (Array s) -> RE s a -> Maybe a
+matchFlipped :: forall s a. (List s) -> RE s a -> Maybe a
 matchFlipped = flip match
 
 infixl 2 matchFlipped as =~
@@ -127,15 +134,12 @@ infixl 2 matchFlipped as =~
 -- >Text.Regex.Applicative> match (sym 'a' <|> sym 'b') "ab"
 -- >Nothing
 --
-match :: forall s a. RE s a -> Array s -> Maybe a
+match :: forall s a. RE s a -> List s -> Maybe a
 match re =
   let
     obj = compile re
   in
-    \str ->
-      head $
-      results $
-      foldl (flip step) obj str
+    \str -> head $ results $ foldl (flip step) obj str
 
 -- | Find a string prefix which is matched by the regular expression.
 --
@@ -155,20 +159,21 @@ match re =
 -- >Just ("ab","c")
 -- >Text.Regex.Applicative> findFirstPrefix "bc" "abc"
 -- >Nothing
-findFirstPrefix :: forall s a. RE s a -> Array s -> Maybe (Tuple a (Array s))
+findFirstPrefix :: forall s a. RE s a -> List s -> Maybe (Tuple a (List s))
 findFirstPrefix re str = go (compile re) str Nothing
   where
   walk obj lst = case uncons lst of
     Nothing -> Tuple obj Nothing
-    Just { head: t, tail: ts } ->
-    case getResult t of
-      Just r -> Tuple obj $ Just r
-      Nothing -> walk (addThread t obj) ts
+    Just { head, tail } ->
+      case getResult head of
+        Just r -> Tuple obj $ Just r
+        Nothing -> walk (addThread head obj) tail
 
   go obj str resOld =
     case walk emptyObject $ threads obj of
       (Tuple obj' resThis) ->
-        let res = ((flip Tuple str) <$> resThis) <|> resOld
+        let
+          res = ((flip Tuple str) <$> resThis) <|> resOld
         in
           case uncons str of
             _ | failed obj' -> res
@@ -191,7 +196,7 @@ findFirstPrefix re str = go (compile re) str Nothing
 -- >Just (Left "if"," foo")
 -- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "iffoo"
 -- >Just (Right "iffoo","")
-findLongestPrefix :: forall s a. RE s a -> (Array s) -> Maybe (Tuple a (Array s))
+findLongestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
 findLongestPrefix re str = go (compile re) str Nothing
   where
   go obj str resOld =
@@ -203,7 +208,7 @@ findLongestPrefix re str = go (compile re) str Nothing
         Just { head, tail } -> go (step head obj) tail res
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
-findShortestPrefix :: forall s a. RE s a -> (Array s) -> Maybe (Tuple a (Array s))
+findShortestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
 findShortestPrefix re str = go (compile re) str
   where
   go obj str =
@@ -218,22 +223,22 @@ findShortestPrefix re str = go (compile re) str
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findFirstInfix :: forall s a. RE s a -> (Array s) -> Maybe (Tuple (Array s) (Tuple a (Array s)))
+findFirstInfix :: forall s a. RE s a -> (List s) -> Maybe (Tuple (List s) (Tuple a (List s)))
 findFirstInfix re str =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
   findFirstPrefix (Tuple <$> few anySym <*> re) str
 
 -- Auxiliary function for findExtremeInfix
-prefixCounter :: forall s. RE s (Tuple Int (Array s))
-prefixCounter = second reverse <$> reFoldl NonGreedy f (Tuple 0 []) anySym
+prefixCounter :: forall s. RE s (Tuple Int (List s))
+prefixCounter = second reverse <$> reFoldl NonGreedy f (Tuple 0 nil) anySym
   where
   f (Tuple i prefix) s = (Tuple (i + 1)) $ cons s prefix
 
 data InfixMatchingState s a = GotResult
   { prefixLen  :: Int
-  , prefixStr  :: Array s
+  , prefixStr  :: List s
   , result   :: a
-  , postfixStr :: Array s
+  , postfixStr :: List s
   }
   | NoResult
 
@@ -250,8 +255,8 @@ preferOver a@(GotResult ar) b@(GotResult br) =
     _  -> a -- otherwise, prefer a
 
 mkInfixMatchingState :: forall s a.
-  Array s -- rest of input
-  -> Thread s (Tuple (Tuple Int (Array s)) a)
+  List s -- rest of input
+  -> Thread s (Tuple (Tuple Int (List s)) a)
   -> InfixMatchingState s a
 mkInfixMatchingState rest thread =
   case getResult thread of
@@ -284,58 +289,56 @@ findExtremalInfix :: forall s a.
      -- arg)
      (InfixMatchingState s a -> InfixMatchingState s a -> InfixMatchingState s a)
   -> RE s a
-  -> Array s
-  -> Maybe (Tuple (Array s) (Tuple a (Array s)))
+  -> List s
+  -> Maybe (Tuple (List s) (Tuple a (List s)))
 findExtremalInfix newOrOld re str =
   case go (compile $ Tuple <$> prefixCounter <*> re) str NoResult of
     NoResult -> Nothing
     GotResult r ->
       Just (Tuple (r.prefixStr) (Tuple (r.result) (r.postfixStr)))
   where
-  {-
-  go :: ReObject s ((Int, [s]), a)
-     -> [s]
-     -> InfixMatchingState s a
-     -> InfixMatchingState s a
-  -}
-  go obj str resOld =
-    let
-      resThis = foldl
-          (\acc t -> acc `preferOver` mkInfixMatchingState str t)
-          NoResult $
-          threads obj
-      res = resThis `newOrOld` resOld
-      obj' =
-        -- If we just found the first result, kill the "prefixCounter" thread.
-        -- We rely on the fact that it is the last thread of the object.
-        if gotResult resThis && not (gotResult resOld)
-          then fromMaybe obj $ fromThreads <$> (init $ threads obj)
-          else obj
-    in
-      case uncons str of
-        Nothing -> res
-        _ | failed obj -> res
-        Just { head, tail } -> go (step head obj') tail res
+    -- go :: forall s a. ReObject s (Tuple (Tuple Int (List s) a)
+    --       -> List s
+    --       -> InfixMatchingState s a
+    --       -> InfixMatchingState s a
+    go obj str resOld =
+      let
+        resThis = foldl
+            (\acc t -> acc `preferOver` mkInfixMatchingState str t)
+            NoResult $
+            threads obj
+        res = resThis `newOrOld` resOld
+        obj' =
+          -- If we just found the first result, kill the "prefixCounter" thread.
+          -- We rely on the fact that it is the last thread of the object.
+          if gotResult resThis && not (gotResult resOld)
+            then fromMaybe obj $ fromThreads <$> (init $ threads obj)
+            else obj
+      in
+        case uncons str of
+          Nothing -> res
+          _ | failed obj -> res
+          Just { head, tail } -> go (step head obj') tail res
 
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findLongestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findLongestInfix :: forall s a. RE s a -> Array s -> Maybe (Tuple (Array s) (Tuple a (Array s)))
+findLongestInfix :: forall s a. RE s a -> List s -> Maybe (Tuple (List s) (Tuple a (List s)))
 findLongestInfix = findExtremalInfix preferOver
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findShortestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findShortestInfix :: forall s a. RE s a -> Array s -> Maybe (Tuple (Array s) (Tuple a (Array s)))
+findShortestInfix :: forall s a. RE s a -> List s -> Maybe (Tuple (List s) (Tuple a (List s)))
 findShortestInfix = findExtremalInfix $ flip preferOver
 
 -- | Replace matches of the regular expression with its value.
 --
 -- >Text.Regex.Applicative > replace ("!" <$ sym 'f' <* some (sym 'o')) "quuxfoofooooofoobarfobar"
 -- >"quux!!!bar!bar"
-replace :: forall s. RE s (Array s) -> Array s -> Array s
-replace r = ((#) []) <<< go
+replace :: forall s. RE s (List s) -> List s -> List s
+replace r = ((#) nil) <<< go
   where go ys = case findLongestInfix r ys of
                   Nothing -> (<>) ys
                   Just (Tuple before (Tuple m rest)) -> ((<>) before) <<< ((<>) m) <<< go rest

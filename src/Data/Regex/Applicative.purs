@@ -36,6 +36,8 @@ import Data.Regex.Applicative.Interface (
   , string
   , reFoldl
   , few
+  , some
+  , many
 --   , comap
   , withMatched
   , match

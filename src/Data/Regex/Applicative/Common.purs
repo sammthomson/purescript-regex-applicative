@@ -12,10 +12,9 @@ module Data.Regex.Applicative.Common (
 
 -- import Data.Char
 import Control.Alt ((<|>))
-import Data.Array (some)
 import Data.Char.Unicode (digitToInt)
 import Data.Foldable (foldl)
-import Data.Regex.Applicative (RE, msym, sym)
+import Data.Regex.Applicative (RE, msym, some, sym)
 import Prelude (class Ring, id, negate, pure, (*), (+), (<$), (<$>), (<*>))
 
 
