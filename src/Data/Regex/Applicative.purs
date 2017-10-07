@@ -26,8 +26,7 @@ import Data.Regex.Applicative.Types (
   mkApp,
   mkFmap,
   mkFail,
-  mkRep,
-  mkVoid
+  mkRep
 )
 import Data.Regex.Applicative.Interface (
   sym

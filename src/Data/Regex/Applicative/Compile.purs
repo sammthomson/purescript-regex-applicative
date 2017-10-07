@@ -9,7 +9,7 @@ import Data.List.Lazy (List, concatMap, nil, (:))
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (class Newtype, wrap, unwrap)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, runFoldRE, runFoldRE_)
+import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, runFoldRE)
 import Data.Tuple (Tuple(..))
 import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, unit, (#), ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
 
@@ -58,7 +58,7 @@ compile2 :: forall s a r.
             List (Thread s r)
 compile2 = unwrap <<< go where
   go = runFoldRE {
-    eps: wrap \k -> emptyCont k unit,
+    eps: \a -> wrap \k -> emptyCont k a,
     symbol: \i p -> wrap \k ->
       let
         t :: (a -> (List (Thread s r))) -> Thread s r
@@ -105,30 +105,25 @@ compile2 = unwrap <<< go where
                 (\_ -> nil)
                 (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
             (emptyCont k b')
-      in wrap $ threads b,
-    void: \n ->
-      let
-        a = compile2_ n
-      in
-        wrap \k -> a $ map ((#) unit) k
+      in wrap $ threads b
   }
 
 data FSMState
   = SAccept
   | STransition ThreadId
 
-type FSMMap s = M.Map Int (Tuple (s -> Boolean) (List FSMState))
+type FSMMap c = M.Map Int (Tuple (c -> Boolean) (List FSMState))
 
-mkNFA :: forall s a.
-         RE s a ->
-         Tuple (List FSMState) (FSMMap s)
+mkNFA :: forall c a.
+         RE c a ->
+         Tuple (List FSMState) (FSMMap c)
 mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
-  go :: forall s' a'.
+  go :: forall c' a'.
         List FSMState ->
-        RE s' a' ->
-        State (FSMMap s') (List FSMState)
-  go k = runFoldRE_ {
-    eps: pure k,
+        RE c' a' ->
+        State (FSMMap c') (List FSMState)
+  go k = runFoldRE {
+    eps: \a -> pure k,  -- FIXME: what to do here?
     symbol:
       \i@(ThreadId n) p ->
         do
@@ -145,8 +140,7 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
       in
         -- return value of 'go' is ignored -- it should be a subset of
         -- 'cont'
-        go cont n >>= \_ -> pure cont,
-    void: \n -> go k n
+        go cont n >>= \_ -> pure cont
   }
 
   findEntries :: forall s' a'. RE s' a' -> (List FSMState)

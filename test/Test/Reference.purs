@@ -69,7 +69,7 @@ char = P $ \s ->
 
 fromRE :: forall c a. RE c a -> P c a
 fromRE = runFoldRE {
-  eps: pure unit,
+  eps: \a -> pure a,
   symbol: (\_ p -> do
     c <- char
     case p c of
@@ -89,7 +89,6 @@ fromRE = runFoldRE {
         NonGreedy -> b' <|> a'
     in
       rep b,
-  void: \a -> fromRE a >>= \_ -> pure unit,
   fail: empty
 }
 

@@ -83,7 +83,7 @@ withMatched r = case go r of R r' -> r' where
   applyTuple f x = swap $ swap f <*> swap x
   go :: RE c a -> R c a
   go = runFoldRE {
-    eps: R $ flip Tuple nil <$> mkEps,
+    eps: \a -> R $ flip Tuple nil <$> mkEps a,
     symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
     alt: \a b -> R $ withMatched a <|> withMatched b,
     app: \a b -> R $ applyTuple <$> withMatched a
@@ -94,9 +94,7 @@ withMatched r = case go r of R r' -> r' where
       R $ mkRep gr
           (\(Tuple a s) (Tuple x' t) -> (Tuple (f a x') (s <> t)))
           (Tuple a0 nil)
-          (withMatched x),
-    -- N.B.: this ruins the Void optimization
-    void: \x -> R $ (const unit *** id) <$> withMatched x
+          (withMatched x)
   }
 
 -- | @s =~ a = match a s@

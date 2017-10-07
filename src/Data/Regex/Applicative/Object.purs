@@ -35,7 +35,7 @@ import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
 import Data.Newtype (class Newtype)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (RE, Thread(Accept, Thread), ThreadId(ThreadId), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, mkVoid, runFoldRE)
+import Data.Regex.Applicative.Types (RE, Thread(Accept, Thread), ThreadId(ThreadId), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, runFoldRE)
 import Prelude (bind, discard, flip, ($), (+), (<<<))
 
 -- | The state of the engine is represented as a \"regex object\" of type
@@ -130,14 +130,13 @@ renumber e =
     go1 x = case go x of R r -> r
     go :: forall t b. RE t b -> R t b
     go = runFoldRE {
-        eps: R $ pure mkEps,
+        eps: \a -> R $ pure $ mkEps a,
         symbol: \_ p -> R $ mkSymbol <$> fresh <*> pure p,
         alt: \a1 a2 -> R $ mkAlt <$> go1 a1 <*> go1 a2,
         app: \a1 a2 -> R $ mkApp <$> go1 a1 <*> go1 a2,
         fail: R $ pure mkFail,
         fmap: \f a -> R $ mkFmap f <$> go1 a,
-        rep: \g f b a -> R $ mkRep g f b <$> go1 a,
-        void: \a -> R $ mkVoid <$> go1 a
+        rep: \g f b a -> R $ mkRep g f b <$> go1 a
     }
   in
     flip evalState (ThreadId (pure 1)) $ go1 e
