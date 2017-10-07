@@ -15,7 +15,7 @@ import Prelude (class Eq, class Show, Unit, discard, join, map, pure, show, unit
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
-import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
+import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck)
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 
@@ -44,8 +44,8 @@ unABC (ABC c) = c
 
 -- Example Regexes
 
-re0 :: RE Char Int
-re0 = pure 1 <* sym 'a'
+re0 :: RE Char String
+re0 = (pure "uh" <* sym 'a') <> pure "mazing"
 
 re1 :: RE Char (Tuple Int Int)
 re1 =
@@ -55,24 +55,24 @@ re1 =
   in
     Tuple <$> (one <|> two) <*> (two <|> one)
 
-re2 :: RE Char (List Int)
-re2 = sequence $ fromFoldable $
+re2 :: RE Char (Array Int)
+re2 = sequence
   [ pure 1 <* sym 'a' <* sym 'a' <|>
-    pure 2 <* sym 'a'
+      pure 2 <* sym 'a'
   , pure 3 <* sym 'b'
   , pure 4 <* sym 'b' <|>
-    pure 5 <* sym 'a' ]
+      pure 5 <* sym 'a' ]
 
 re3 :: RE Char (List Int)
 re3 = sequence $ fromFoldable $
   [ pure 0 <|> pure 1
   , pure 1 <* sym 'a' <* sym 'a' <|>
-    pure 2 <* sym 'a'
+      pure 2 <* sym 'a'
   , pure 3 <* sym 'b' <|> pure 6
   , map ((+) 1) $
-    pure 4 <* sym 'b' <|>
-    pure 7 <|>
-    pure 5 <* sym 'a' ]
+      pure 4 <* sym 'b' <|>
+      pure 7 <|>
+      pure 5 <* sym 'a' ]
 
 re4 :: RE Char (List Char)
 re4 = sym 'a' *> many (sym 'b') <* sym 'a'
@@ -125,15 +125,15 @@ propMap :: forall c b a. Eq b => Show a => Show b =>
            Result
 propMap re f s = prop re $ map f s
 
+
 prop_withMatched :: Array AB -> Result
 prop_withMatched =
   let
     re = withMatched $ many (str "a" <|> str "ba")
   in
-    \s ->
-      case map unAB s =~ re of
-        Nothing -> Success
-        Just (Tuple x y) -> join x ==? y
+    \s -> case map unAB s =~ re of
+      Nothing -> Success
+      Just (Tuple x y) -> join x ==? y
 
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
@@ -152,7 +152,7 @@ main = run [consoleReporter] $ do
     describe "Matching vs reference" $ do
       let a1 = 'a' : nil
       it "re0 fixture" $ quickCheck $ (a1 =~ re0) ==? reference re0 a1
-      it "re0" $ quickCheck' 10 $ propMap re0 unA
+      it "re0" $ quickCheck $ propMap re0 unA
       it "re1" $ quickCheck $ propMap re1 unA
       it "re2" $ quickCheck $ propMap re2 unAB
       it "re3" $ quickCheck $ propMap re3 unAB

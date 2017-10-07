@@ -18,7 +18,8 @@ module Data.Regex.Applicative.Types (
 import Data.Maybe
 
 import Control.Alt (class Alt, (<$>))
-import Control.Alternative (class Alternative)
+import Control.Alternative (class Alternative, (<*>))
+import Control.Apply (lift2)
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
@@ -26,7 +27,7 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
-import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Show, show, ($), (<<<), (<>))
+import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (<<<), (<>))
 
 
 newtype ThreadId = ThreadId Int
@@ -87,11 +88,11 @@ instance showGreediness :: Show Greediness where
 -- | and returns the list of @ra@'s return values on those strings.
 data RE' c a b =
   Eps a
+  | Fail
   | Symbol ThreadId (c -> Maybe a)
   | Alt (RE c a) (RE c a)
   | App (RE c (b -> a)) (RE c b)
   | Fmap (b -> a) (RE c b)
-  | Fail
   | Rep Greediness (a -> b -> a) a (RE c b)
 
 -- we don't actually care about b
@@ -100,11 +101,11 @@ newtype RE c a = RE (Exists (RE' c a))
 instance showRE :: Show (RE c a) where
   show = elimRE {
     eps: \_ -> "Eps ?",
+    fail: "Fail",
     symbol: \_ _ -> "Symbol threadId? symbolToOuput?",
     app: \f x -> "App (" <> show f <> ") (" <> show x <> ")",
     alt: \a b -> "Alt (" <> show a <> ") (" <> show b <> ")",
     fmap: \_ b -> "Fmap f? (" <> show b <> ")",
-    fail: "Fail",
     rep: \g _ a r -> "Rep " <> show g <> " op? a? (" <> show r <> ")"
   }
 
@@ -173,11 +174,7 @@ type FoldRE c a r = {
   app :: forall b. RE c (b -> a) -> RE c b -> r,
   fmap :: forall b. (b -> a) -> RE c b -> r,
   fail :: r,
-  rep :: forall b. Greediness
-          -> (a -> b -> a)
-          -> a
-          -> RE c b
-          -> r
+  rep :: forall b. Greediness -> (a -> b -> a) -> a -> RE c b -> r
 }
 
 elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
@@ -194,18 +191,21 @@ elimRE elim (RE re) = runExists go re where
 
 
 instance functorRe :: Functor (RE c) where
-  map f x = mkFmap f x
+  map = mkFmap
 
 instance applyRe :: Apply (RE c) where
-  apply mf mx = mkApp mf mx
+  apply = mkApp
 
 instance applicativeRe :: Applicative (RE c) where
-  pure x = mkEps x
+  pure = mkEps
 
 instance altRe :: Alt (RE c) where
-  alt a1 a2 = mkAlt a1 a2
+  alt = mkAlt
 
 instance plusRe :: Plus (RE c) where
   empty = mkFail
 
 instance alternativeRe :: Alternative (RE c)
+
+instance semigroupRe :: Semigroup a => Semigroup (RE c a) where
+  append = lift2 (<>)
