@@ -13,10 +13,11 @@ import Data.String (toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Prelude (class Eq, class Show, Unit, discard, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
-import Test.QuickCheck (class Arbitrary, Result(Success), (==?))
+import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
-import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck)
+import Test.Spec.Assertions (shouldEqual)
+import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 
@@ -47,6 +48,9 @@ unABC :: ABC -> Char
 unABC = unwrap
 
 -- Example Regexes
+
+re0 :: RE Char Int
+re0 = pure 1 <* sym 'a'
 
 re1 :: RE Char (Tuple Int Int)
 re1 =
@@ -109,16 +113,22 @@ re9 = many (sym 'a' <|> empty) <* sym 'b'
 re10 :: RE Char (List Char)
 re10 = few (sym 'a' <|> empty) <* sym 'b'
 
-prop :: forall c b a. Eq b => Show b =>
-        RE a b ->
-        (c -> a) ->
-        Array c ->
-        Result
-prop re f s =
-  let
-    fs = map f (fromFoldable s)
-  in
-    reference re fs ==? (fs =~ re)
+prop :: forall b a. Eq b => Show a => Show b =>
+           RE a b ->
+           Array a ->
+           Result
+prop re s = realResult ==? refResult where
+  fs = fromFoldable s
+  refResult = reference re fs
+  realResult = fs =~ re
+
+
+propMap :: forall c b a. Eq b => Show a => Show b =>
+           RE a b ->
+           (c -> a) ->
+           Array c ->
+           Result
+propMap re f s = prop re $ map f s
 
 prop_withMatched :: Array AB -> Result
 prop_withMatched =
@@ -144,15 +154,18 @@ testRecognitionAgainstParsing re f s =
 main :: forall e. Eff (QCRunnerEffects e) Unit
 main = run [consoleReporter] $ do
   describe "Tests" $ do
-    -- describe "Engine tests" $ do
-    --   it "re1" $ quickCheck $ prop re1 unA
-    --   it "re2" $ quickCheck $ prop re2 unAB
-    --   it "re3" $ quickCheck $ prop re3 unAB
-    --   it "re4" $ quickCheck $ prop re4 unAB
-    --   it "re5" $ quickCheck $ prop re5 unA
-    --   it "re6" $ quickCheck $ prop re6 unA
-    --   it "re7" $ quickCheck $ prop re7 unAB
-    --   it "re8" $ quickCheck $ prop re8 unAB
+    describe "Matching vs reference" $ do
+      let a1 = 'a' : nil
+      it "re0 fixture" $ (a1 =~ re0) `shouldEqual` (reference re0 a1)
+      it "re0" $ quickCheck' 10 $ propMap re0 unA
+      it "re1" $ quickCheck $ propMap re1 unA
+      it "re2" $ quickCheck $ propMap re2 unAB
+      it "re3" $ quickCheck $ propMap re3 unAB
+      it "re4" $ quickCheck $ propMap re4 unAB
+      it "re5" $ quickCheck $ propMap re5 unA
+      it "re6" $ quickCheck $ propMap re6 unA
+      it "re7" $ quickCheck $ propMap re7 unAB
+      it "re8" $ quickCheck $ propMap re8 unAB
     describe "Recognition vs parsing" $ do
       it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unA
       it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unAB
@@ -165,7 +178,7 @@ main = run [consoleReporter] $ do
       it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
       it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
       it "withMatched" $ quickCheck prop_withMatched
-    describe "Tests for matching functions" $ do
+    describe "Matching functions" $ do
       describe "findFirstPrefix" $ do
         it "t1" $ quickCheck $
             (findFirstPrefix (str "a" <|> str "ab") (fromFoldable $ toCharArray "abc")) ==?

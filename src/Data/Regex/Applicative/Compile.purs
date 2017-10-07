@@ -18,7 +18,7 @@ compile :: forall s a r.
            RE s a ->
            (a -> List (Thread s r)) ->
            List (Thread s r)
-compile e k = unwrap (compile2 e) (SingleCont k)
+compile e k = compile2 e (SingleCont k)
 
 
 data Cont a = SingleCont a | EmptyNonEmpty a a
@@ -46,69 +46,72 @@ nonEmptyCont k =
 -- `ContToList s r` is a type function of `a`.
 newtype ContToList s r a =
   ContToList (Cont (a -> List (Thread s r)) -> List (Thread s r))
-
 derive instance newtypeContToList :: Newtype (ContToList s r a) _
 
 -- The whole point of this module is this function, compile2.
 --
 -- compile2 function takes two continuations: one when the match is empty and
 -- one when the match is non-empty. See the "Rep" case for the reason.
-compile2 :: forall s a r. RE s a -> ContToList s r a
-compile2 = runFoldRE {
-  eps: wrap \k -> emptyCont k unit,
-  symbol: \i p -> wrap \k ->
-    let
-      t :: (a -> (List (Thread s r))) -> Thread s r
-      t k' = mkThread i $ \s ->
-        case p s of
-          Just r -> k' r
-          Nothing -> nil
-    in
-      (t $ nonEmptyCont k) : nil,
-  app: \n1 n2 ->
-    let
-      a1 = unwrap $ compile2 n1
-      a2 = unwrap $ compile2 n2
-    in
-      ContToList \k -> case k of
-        SingleCont k' ->
-          a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
-        EmptyNonEmpty ke kn ->
-          a1 $ EmptyNonEmpty
-            -- empty
-            (\a1_value ->
-              a2 $ EmptyNonEmpty (ke <<< a1_value) (kn <<< a1_value))
-            -- non-empty
-            (\a1_value ->
-              a2 $ EmptyNonEmpty (kn <<< a1_value) (kn <<< a1_value)),
-  alt: \n1 n2 ->
-    let
-      a1 = unwrap $ compile2 n1
-      a2 = unwrap $ compile2 n2
-    in wrap \k -> a1 k <> a2 k,
-  fail: wrap $ const nil,
-  fmap: \f n -> let a = compile2 n in wrap \k -> (unwrap a) $ map ((>>>) f) k,
-  -- This is actually the point where we use the difference between
-  -- continuations. For the inner RE the empty continuation is a
-  -- "failing" one in order to avoid non-termination.
-  rep: \g f b n ->
-    let
-      a = unwrap $ compile2 n
-      threads b' k =
-        combine
-          g
-          (a $
-            EmptyNonEmpty
-              (\_ -> nil)
-              (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
-          (emptyCont k b')
-    in wrap $ threads b,
-  void: \n ->
-    let
-      a = compile2_ n
-    in
-      wrap \k -> a $ map ((#) unit) k
-}
+compile2 :: forall s a r.
+            RE s a ->
+            Cont (a -> List (Thread s r)) ->
+            List (Thread s r)
+compile2 = unwrap <<< go where
+  go = runFoldRE {
+    eps: wrap \k -> emptyCont k unit,
+    symbol: \i p -> wrap \k ->
+      let
+        t :: (a -> (List (Thread s r))) -> Thread s r
+        t k' = mkThread i $ \s ->
+          case p s of
+            Just r -> k' r
+            Nothing -> nil
+      in
+        (t $ nonEmptyCont k) : nil,
+    app: \n1 n2 ->
+      let
+        a1 = compile2 n1
+        a2 = compile2 n2
+      in
+        ContToList \k -> case k of
+          SingleCont k' ->
+            a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
+          EmptyNonEmpty ke kn ->
+            a1 $ EmptyNonEmpty
+              -- empty
+              (\a1_value ->
+                a2 $ EmptyNonEmpty (ke <<< a1_value) (kn <<< a1_value))
+              -- non-empty
+              (\a1_value ->
+                a2 $ EmptyNonEmpty (kn <<< a1_value) (kn <<< a1_value)),
+    alt: \n1 n2 ->
+      let
+        a1 = compile2 n1
+        a2 = compile2 n2
+      in wrap \k -> a1 k <> a2 k,
+    fail: wrap $ const nil,
+    fmap: \f n -> let a = compile2 n in wrap \k -> a $ map ((>>>) f) k,
+    -- This is actually the point where we use the difference between
+    -- continuations. For the inner RE the empty continuation is a
+    -- "failing" one in order to avoid non-termination.
+    rep: \g f b n ->
+      let
+        a = compile2 n
+        threads b' k =
+          combine
+            g
+            (a $
+              EmptyNonEmpty
+                (\_ -> nil)
+                (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
+            (emptyCont k b')
+      in wrap $ threads b,
+    void: \n ->
+      let
+        a = compile2_ n
+      in
+        wrap \k -> a $ map ((#) unit) k
+  }
 
 data FSMState
   = SAccept
@@ -116,7 +119,9 @@ data FSMState
 
 type FSMMap s = M.Map Int (Tuple (s -> Boolean) (List FSMState))
 
-mkNFA :: forall s a. RE s a -> Tuple (List FSMState) (FSMMap s)
+mkNFA :: forall s a.
+         RE s a ->
+         Tuple (List FSMState) (FSMMap s)
 mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
   go :: forall s' a'.
         List FSMState ->
@@ -150,7 +155,10 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
     -- just to use 'go'
     evalState (go nil e') M.empty
 
-compile2_ :: forall s a r. RE s a -> Cont (List (Thread s r)) -> (List (Thread s r))
+compile2_ :: forall s a r.
+             RE s a ->
+             Cont (List (Thread s r)) ->
+             List (Thread s r)
 compile2_ e' = case mkNFA e' of
   Tuple entries fsmap ->
     let

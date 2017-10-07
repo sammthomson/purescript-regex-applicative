@@ -12,22 +12,29 @@
 -- This is exposed for testing purposes only!
 --------------------------------------------------------------------
 
-module Test.Reference (reference) where
+module Test.Reference where
+
 import Control.Alternative (class Alt, class Alternative, empty, map, pure, (<*>), (<|>))
 import Control.Applicative (class Applicative, class Apply)
+import Control.Lazy (class Lazy)
 import Control.Monad (class Bind, class Monad, ap, liftM1, (>>=))
-import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Plus (class Plus)
-import Data.List.Lazy (List, filter, nil, null, uncons, (:))
+import Data.Foldable (class Foldable)
+import Data.List.Lazy (List, filter, fromFoldable, nil, null, uncons, (:))
 import Data.Maybe (Maybe(..))
 import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), RE)
 import Data.Regex.Applicative.Types (runFoldRE)
 import Data.Tuple (Tuple(..), snd)
-import Prelude (class Functor, bind, const, flip, unit, ($), (<<<), (<>))
+import Debug.Trace (class DebugWarning, traceShow)
+import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (<<<), (<>))
 
 
--- A simple parsing monad
-newtype P s a = P (List s -> List (Tuple a (List s)))
+-- | A parsing monad. Accepts a List of symbols and returns a List of pairs of
+-- | where `a` is the result of a prefix match, and `List c` is the remainder
+-- | of the input yet to be matched.
+newtype P c a = P (List c -> List (Tuple a (List c)))
+
+derive newtype instance lazyP :: Lazy (P s a)
 
 instance functorP :: Functor (P s) where
   map = liftM1
@@ -40,7 +47,7 @@ instance applicativeP :: Applicative (P s) where
 
 instance bindP :: Bind (P s) where
   bind (P a) k =
-    P \s -> (a s) >>= (\(Tuple x s') -> case k x of P p -> p s')
+    P \s -> a s >>= \(Tuple x s') -> case k x of P p -> p s'
 
 instance monadP :: Monad (P s)
 
@@ -53,26 +60,27 @@ instance plusP :: Plus (P s) where
   
 instance alternativeP :: Alternative (P s)
 
-getChar :: forall s. P s s
-getChar = P $ \s ->
+-- | Match and return a single symbol
+char :: forall s. P s s
+char = P $ \s ->
   case uncons s of
     Nothing -> nil
     Just { head, tail } -> (Tuple head tail : nil)
 
-re2monad :: forall s a. RE s a -> P s a
-re2monad = runFoldRE $ {
-  eps: P \_ -> unsafeThrow "eps",
+fromRE :: forall s a. RE s a -> P s a
+fromRE = runFoldRE {
+  eps: pure unit,
   symbol: (\_ p -> do
-    c <- getChar
+    c <- char
     case p c of
       Just r -> pure r
       Nothing -> empty),
-  alt: \a1 a2 -> re2monad a1 <|> re2monad a2,
-  app: \a1 a2 -> re2monad a1 <*> re2monad a2,
-  fmap: \f a -> map f $ re2monad a,
+  alt: \a1 a2 -> fromRE a1 <|> fromRE a2,
+  app: \a1 a2 -> fromRE a1 <*> fromRE a2,
+  fmap: \f a -> map f $ fromRE a,
   rep: \g f b a ->
     let
-      am = re2monad a
+      am = fromRE a
       rep b' = flip combine (pure b') $ do
         a' <- am
         rep $ f b' a'
@@ -81,18 +89,21 @@ re2monad = runFoldRE $ {
         NonGreedy -> b' <|> a'
     in
       rep b,
-  void: \a -> re2monad a >>= \_ -> pure unit,
+  void: \a -> fromRE a >>= \_ -> pure unit,
   fail: empty
 }
 
-runP :: forall s a. P s a -> List s -> Maybe a
-runP (P m) s = case uncons $ filter (null <<< snd) $ m s of
-  Just { head: (Tuple r _), tail : _ } -> Just r
+spyShow :: forall a. DebugWarning => Show a => (Unit -> a) -> a
+spyShow f = let r = f unit in traceShow r $ pure r
+
+runP :: forall s a t. Foldable t => P s a -> t s -> Maybe a
+runP (P m) s = case uncons $ filter (null <<< snd) $ m $ fromFoldable s of
+  Just { head: (Tuple r _) } -> Just r
   _ -> Nothing
 
 -- | 'reference' @r@ @s@ should give the same results as @s@ '=~' @r@.
 --
--- However, this is not very efficient implementation and is supposed to be
+-- However, this is not a very efficient implementation and is to be
 -- used for testing only.
-reference :: forall s a. RE s a -> List s -> Maybe a
-reference r s = runP (re2monad r) s
+reference :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
+reference r s = runP (fromRE r) s

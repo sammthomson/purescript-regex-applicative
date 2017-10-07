@@ -24,17 +24,18 @@ import Control.Alternative (class Alternative, pure)
 import Control.Lazy as Z
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
-import Data.Lazy (Lazy, defer, force)
-import Data.List.Lazy (List)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
+import Data.Lazy (Lazy, force)
 import Data.Maybe
+import Data.List.Lazy (List)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
-import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, Unit, const, unit, ($), (<<<))
+import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Show, Unit, const, show, ($), (<<<), (<>))
 import Unsafe.Coerce (unsafeCoerce)
 
 newtype ThreadId = ThreadId (Lazy Int)
-instance lazyThreadId :: Z.Lazy ThreadId where
-  defer f = ThreadId $ defer \_ -> case f unit of ThreadId i -> force i
+derive newtype instance lazyThreadId :: Z.Lazy ThreadId
 
 -- | A thread either is a result or corresponds to a symbol in the regular
 -- expression, which is expected by that thread.
@@ -58,7 +59,9 @@ data Greediness = Greedy | NonGreedy
 
 derive instance eqGreediness :: Eq Greediness
 derive instance ordGreediness :: Ord Greediness
--- derive instance showGreediness :: Show Greediness
+derive instance genericGreedines :: Generic Greediness _
+instance showGreediness :: Show Greediness where
+  show = genericShow
 -- derive instance readGreediness :: Read Greediness
 -- derive instance enumGreediness :: Enum Greediness
 
@@ -102,9 +105,19 @@ data RE' s a b =
 -- we don't actually care about b
 newtype RE s a = RE (Lazy (Exists (RE' s a)))
 derive instance newtypeRE :: Newtype (RE s a) _
+derive newtype instance lazyRE :: Z.Lazy (RE s a)
 
-instance lazyRE :: Z.Lazy (RE s a) where
-  defer f = RE $ defer \_ -> case f unit of RE x -> force x
+instance showRE :: Show (RE s a) where
+  show = runFoldRE_ {
+    eps: "Eps",
+    symbol: \_ _ -> "Symbol threadId? symbolToOuput?",
+    app: \f x -> "App (" <> show f <> ") (" <> show x <> ")",
+    alt: \a b -> "Alt (" <> show a <> ") (" <> show b <> ")",
+    fmap: \_ b -> "Fmap f? (" <> show b <> ")",
+    fail: "Fail",
+    rep: \g _ a r -> "Rep " <> show g <> " op? a? (" <> show r <> ")",
+    void: \_ -> "Void"
+  }
 
 -- don't export me
 mkRE :: forall s a b. RE' s a b -> RE s a
