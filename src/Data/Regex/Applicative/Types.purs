@@ -156,21 +156,22 @@ mkVoid :: forall s a. RE s a -> RE s Unit
 mkVoid x = mkRE $ Void x
 
 
--- -- | 'RE' is a profunctor. This is its contravariant map.
--- comapRe :: forall s1 s2 a1 a2. (s2 -> s1) -> (a1 -> a2) -> RE s1 a1 -> RE s2 a2
--- comapRe f = runFoldRE {
---     eps:               mkEps,
---     symbol: \t p    -> mkSymbol t (p <<< f),
---     alt: \r1 r2     -> mkAlt (comapRe f r1) (comapRe f r2),
---     app: \r1 r2     -> mkApp (comapRe f r1) (comapRe f r2),
---     fmap: \g r      -> mkFmap g (comapRe f r),
---     fail:              mkFail,
---     rep: \gr fn a r -> mkRep gr fn a (comapRe f r),
---     void: \r        -> mkVoid (comapRe f r)
---   }
+-- | 'RE' is a profunctor. This is its contravariant map.
+comapRe :: forall s t a. (t -> s) -> RE s a -> RE t a
+comapRe f = runFoldRE {
+    eps:               mkEps,
+    symbol: \t p    -> mkSymbol t (p <<< f),
+    alt: \r1 r2     -> mkAlt (comapRe f r1) (comapRe f r2),
+    app: \r1 r2     -> mkApp (comapRe f r1) (comapRe f r2),
+    fmap: \g r      -> mkFmap g (comapRe f r),
+    fail:              mkFail,
+    rep: \gr fn a r -> mkRep gr fn a (comapRe f r),
+    void: \r        -> mkVoid (comapRe f r)
+  }
 
--- instance profunctorRe :: Profunctor (RE s a) where
---   dimap = comapRe
+instance profunctorRe :: Profunctor (RE) where
+  dimap f g r = g <$> comapRe f r
+
 
 -- for pattern matching where we want to remember that `a = Unit` for Eps and Void.
 type FoldRE s a t = {
