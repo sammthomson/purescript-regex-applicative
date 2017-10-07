@@ -14,27 +14,29 @@ import Data.Tuple (Tuple(..), swap)
 import Prelude (class Eq, class Semigroup, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
-many :: forall a c. RE c a -> RE c (List a)
+-- | `(v)*`. Matches `v` 0 or more times.
+many :: forall c a. RE c a -> RE c (List a)
 many v = reverse <$> mkRep Greedy (flip (:)) nil v
 
+-- | `(v)+`.  Matches `v` 0 or more times.
 some :: forall c a. RE c a -> RE c (List a)
 some v = (:) <$> v <*> defer (\_ -> many v)
 
 -- | Match and return a single symbol which satisfies the predicate
-psym :: forall s. (s -> Boolean) -> RE s s
-psym p = msym (\s -> if p s then Just s else Nothing)
+psym :: forall c. (c -> Boolean) -> RE c c
+psym p = msym (\c -> if p c then Just c else Nothing)
 
 -- | Like 'psym', but allows to return a computed value instead of the
 -- original symbol
-msym :: forall s a. (s -> Maybe a) -> RE s a
+msym :: forall c a. (c -> Maybe a) -> RE c a
 msym p = mkSymbol (defer \_ -> unsafeThrow "Not numbered symbol") p
 
 -- | Match and return the given symbol
-sym :: forall s. Eq s => s -> RE s s
-sym s = psym ((==) s)
+sym :: forall c. Eq c => c -> RE c c
+sym c = psym ((==) c)
 
 -- | Match and return any single symbol
-anySym :: forall s. RE s s
+anySym :: forall c. RE c c
 anySym = msym Just
 
 -- | Match and return the given sequence of symbols.
@@ -57,20 +59,6 @@ arr = traverse sym
 str :: String -> RE Char (List Char)
 str s = fromFoldable <$> (arr $ toCharArray s)
 
--- | Match zero or more instances of the given expression, which are combined using
--- the given folding function.
---
--- 'Greediness' argument controls whether this regular expression should match
--- as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
--- of the underlying expression.
-reFoldl :: forall s a b.
-           Greediness ->
-           (b -> a -> b) ->
-           b ->
-           RE s a ->
-           RE s b
-reFoldl g f b a = mkRep g f b a
-
 -- | Match zero or more instances of the given expression, but as
 -- few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
 -- is 'many'.
@@ -81,38 +69,38 @@ reFoldl g f b a = mkRep g f b a
 -- >Just ("a","abab")
 -- >Text.Regex.Applicative> findFirstPrefix (many anySym  <* "b") "ababab"
 -- >Just ("ababa","")
-few :: forall s a. RE s a -> RE s (List a)
+few :: forall c a. RE c a -> RE c (List a)
 few a = reverse <$> mkRep NonGreedy (flip cons) nil a
 
 
 -- helper
-newtype R s a = R (RE s (Tuple a (List s)))
+newtype R c a = R (RE c (Tuple a (List c)))
 
 -- | Return matched symbols as part of the return value
-withMatched :: forall s a. RE s a -> RE s (Tuple a (List s))
+withMatched :: forall c a. RE c a -> RE c (Tuple a (List c))
 withMatched r = case go r of R r' -> r' where
   applyTuple :: forall x y z. Semigroup z => Tuple (x -> y) z -> Tuple x z -> Tuple y z
   applyTuple f x = swap $ swap f <*> swap x
-  go :: RE s a -> R s a
+  go :: RE c a -> R c a
   go = runFoldRE {
-          eps: R $ flip Tuple nil <$> mkEps,
-          symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
-          alt: \a b -> R $ withMatched a <|> withMatched b,
-          app: \a b -> R $ applyTuple <$> withMatched a
-                                      <*> withMatched b,
-          fmap: \f x -> R $ (f *** id) <$> withMatched x,
-          fail: R $ mkFail,
-          rep: \gr f a0 x ->
-            R $ mkRep gr
-                (\(Tuple a s) (Tuple x t) -> (Tuple (f a x) (s <> t)))
-                (Tuple a0 nil)
-                (withMatched x),
-          -- N.B.: this ruins the Void optimization
-          void: \x -> R $ (const unit *** id) <$> withMatched x
-        }
+    eps: R $ flip Tuple nil <$> mkEps,
+    symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
+    alt: \a b -> R $ withMatched a <|> withMatched b,
+    app: \a b -> R $ applyTuple <$> withMatched a
+                                <*> withMatched b,
+    fmap: \f x -> R $ (f *** id) <$> withMatched x,
+    fail: R $ mkFail,
+    rep: \gr f a0 x ->
+      R $ mkRep gr
+          (\(Tuple a s) (Tuple x' t) -> (Tuple (f a x') (s <> t)))
+          (Tuple a0 nil)
+          (withMatched x),
+    -- N.B.: this ruins the Void optimization
+    void: \x -> R $ (const unit *** id) <$> withMatched x
+  }
 
 -- | @s =~ a = match a s@
-matchFlipped :: forall s a t. Foldable t => t s -> RE s a -> Maybe a
+matchFlipped :: forall c a t. Foldable t => t c -> RE c a -> Maybe a
 matchFlipped = flip match
 
 infixl 2 matchFlipped as =~
@@ -127,7 +115,7 @@ infixl 2 matchFlipped as =~
 -- >Text.Regex.Applicative> match (sym 'a' <|> sym 'b') "ab"
 -- >Nothing
 --
-match :: forall s a t. Foldable t => RE s a -> t s -> Maybe a
+match :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
 match re =
   let
     obj = compile re
@@ -152,7 +140,7 @@ match re =
 -- >Just ("ab","c")
 -- >Text.Regex.Applicative> findFirstPrefix "bc" "abc"
 -- >Nothing
-findFirstPrefix :: forall s a. RE s a -> List s -> Maybe (Tuple a (List s))
+findFirstPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
 findFirstPrefix re s = go (compile re) s Nothing
   where
   walk obj lst = case uncons lst of
@@ -189,7 +177,7 @@ findFirstPrefix re s = go (compile re) s Nothing
 -- >Just (Left "if"," foo")
 -- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "iffoo"
 -- >Just (Right "iffoo","")
-findLongestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
+findLongestPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
 findLongestPrefix re s = go (compile re) s Nothing
   where
   go obj s' resOld =
@@ -201,7 +189,7 @@ findLongestPrefix re s = go (compile re) s Nothing
         Just { head, tail } -> go (step head obj) tail res
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
-findShortestPrefix :: forall s a. RE s a -> (List s) -> Maybe (Tuple a (List s))
+findShortestPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
 findShortestPrefix re s = go (compile re) s
   where
   go obj s' =
@@ -216,30 +204,30 @@ findShortestPrefix re s = go (compile re) s
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findFirstInfix :: forall s a. RE s a -> (List s) -> Maybe (Tuple (List s) (Tuple a (List s)))
+findFirstInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
   findFirstPrefix (Tuple <$> few anySym <*> re) s
 
 -- Auxiliary function for findExtremeInfix
-prefixCounter :: forall s. RE s (Tuple Int (List s))
-prefixCounter = second reverse <$> reFoldl NonGreedy f (Tuple 0 nil) anySym
+prefixCounter :: forall c. RE c (Tuple Int (List c))
+prefixCounter = second reverse <$> mkRep NonGreedy f (Tuple 0 nil) anySym
   where
   f (Tuple i prefix) s = (Tuple (i + 1)) $ cons s prefix
 
-data InfixMatchingState s a = GotResult
+data InfixMatchingState c a = GotResult
   { prefixLen  :: Int
-  , prefixStr  :: List s
-  , result   :: a
-  , postfixStr :: List s
+  , prefixStr  :: List c
+  , result     :: a
+  , postfixStr :: List c
   }
   | NoResult
 
 -- a `preferOver` b chooses one of a and b, giving preference to a
-preferOver :: forall s a.
-  InfixMatchingState s a
-  -> InfixMatchingState s a
-  -> InfixMatchingState s a
+preferOver :: forall c a.
+  InfixMatchingState c a
+  -> InfixMatchingState c a
+  -> InfixMatchingState c a
 preferOver NoResult b = b
 preferOver b NoResult = b
 preferOver a@(GotResult ar) b@(GotResult br) =
@@ -247,10 +235,10 @@ preferOver a@(GotResult ar) b@(GotResult br) =
     GT -> b -- prefer b when it has smaller prefix
     _  -> a -- otherwise, prefer a
 
-mkInfixMatchingState :: forall s a.
-  List s -- rest of input
-  -> Thread s (Tuple (Tuple Int (List s)) a)
-  -> InfixMatchingState s a
+mkInfixMatchingState :: forall c a.
+  List c -- rest of input
+  -> Thread c (Tuple (Tuple Int (List c)) a)
+  -> InfixMatchingState c a
 mkInfixMatchingState rest thread =
   case getResult thread of
     Just (Tuple (Tuple pLen pStr) res) ->
@@ -262,7 +250,7 @@ mkInfixMatchingState rest thread =
         }
     Nothing -> NoResult
 
-gotResult :: forall s a. InfixMatchingState s a -> Boolean
+gotResult :: forall c a. InfixMatchingState c a -> Boolean
 gotResult (GotResult _) = true
 gotResult _ = false
 
@@ -277,23 +265,19 @@ gotResult _ = false
 -- choice)
 -- 3.3. If they are produced on the different steps, choose the later one (since
 -- they have the same prefixes, later means longer)
-findExtremalInfix :: forall s a.
+findExtremalInfix :: forall c a.
      -- function to combine a later result (first arg) to an earlier one (second
      -- arg)
-     (InfixMatchingState s a -> InfixMatchingState s a -> InfixMatchingState s a)
-  -> RE s a
-  -> List s
-  -> Maybe (Tuple (List s) (Tuple a (List s)))
+     (InfixMatchingState c a -> InfixMatchingState c a -> InfixMatchingState c a)
+  -> RE c a
+  -> List c
+  -> Maybe (Tuple (List c) (Tuple a (List c)))
 findExtremalInfix newOrOld re s =
   case go (compile $ Tuple <$> prefixCounter <*> re) s NoResult of
     NoResult -> Nothing
     GotResult r ->
       Just (Tuple (r.prefixStr) (Tuple (r.result) (r.postfixStr)))
   where
-    -- go :: forall s a. ReObject s (Tuple (Tuple Int (List s) a)
-    --       -> List s
-    --       -> InfixMatchingState s a
-    --       -> InfixMatchingState s a
     go obj s' resOld =
       let
         resThis = foldl
@@ -317,20 +301,20 @@ findExtremalInfix newOrOld re s =
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findLongestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findLongestInfix :: forall s a. RE s a -> List s -> Maybe (Tuple (List s) (Tuple a (List s)))
+findLongestInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findLongestInfix = findExtremalInfix preferOver
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findShortestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findShortestInfix :: forall s a. RE s a -> List s -> Maybe (Tuple (List s) (Tuple a (List s)))
+findShortestInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findShortestInfix = findExtremalInfix $ flip preferOver
 
 -- | Replace matches of the regular expression with its value.
 --
 -- >Text.Regex.Applicative > replace ("!" <$ sym 'f' <* some (sym 'o')) "quuxfoofooooofoobarfobar"
 -- >"quux!!!bar!bar"
-replace :: forall s. RE s (List s) -> List s -> List s
+replace :: forall c. RE c (List c) -> List c -> List c
 replace r = ((#) nil) <<< go
   where go ys = case findLongestInfix r ys of
                   Nothing -> (<>) ys

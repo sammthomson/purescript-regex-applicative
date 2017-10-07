@@ -34,40 +34,40 @@ import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (
 -- | of the input yet to be matched.
 newtype P c a = P (List c -> List (Tuple a (List c)))
 
-derive newtype instance lazyP :: Lazy (P s a)
+derive newtype instance lazyP :: Lazy (P c a)
 
-instance functorP :: Functor (P s) where
+instance functorP :: Functor (P c) where
   map = liftM1
 
-instance applyP :: Apply (P s) where
+instance applyP :: Apply (P c) where
   apply = ap
 
-instance applicativeP :: Applicative (P s) where
+instance applicativeP :: Applicative (P c) where
   pure x = P $ \s -> (Tuple x s) : nil
 
-instance bindP :: Bind (P s) where
+instance bindP :: Bind (P c) where
   bind (P a) k =
     P \s -> a s >>= \(Tuple x s') -> case k x of P p -> p s'
 
-instance monadP :: Monad (P s)
+instance monadP :: Monad (P c)
 
-instance altP :: Alt (P s) where
+instance altP :: Alt (P c) where
   alt (P a1) (P a2) =
     P \s -> a1 s <> a2 s
 
-instance plusP :: Plus (P s) where
+instance plusP :: Plus (P c) where
   empty = P $ const nil
   
-instance alternativeP :: Alternative (P s)
+instance alternativeP :: Alternative (P c)
 
 -- | Match and return a single symbol
-char :: forall s. P s s
+char :: forall c. P c c
 char = P $ \s ->
   case uncons s of
     Nothing -> nil
     Just { head, tail } -> (Tuple head tail : nil)
 
-fromRE :: forall s a. RE s a -> P s a
+fromRE :: forall c a. RE c a -> P c a
 fromRE = runFoldRE {
   eps: pure unit,
   symbol: (\_ p -> do
@@ -96,7 +96,7 @@ fromRE = runFoldRE {
 spyShow :: forall a. DebugWarning => Show a => (Unit -> a) -> a
 spyShow f = let r = f unit in traceShow r $ pure r
 
-runP :: forall s a t. Foldable t => P s a -> t s -> Maybe a
+runP :: forall c a t. Foldable t => P c a -> t c -> Maybe a
 runP (P m) s = case uncons $ filter (null <<< snd) $ m $ fromFoldable s of
   Just { head: (Tuple r _) } -> Just r
   _ -> Nothing

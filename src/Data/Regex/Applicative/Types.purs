@@ -19,6 +19,8 @@ module Data.Regex.Applicative.Types (
   runFoldRE_
 ) where
 
+import Data.Maybe
+
 import Control.Alt (class Alt, (<$>))
 import Control.Alternative (class Alternative, pure)
 import Control.Lazy as Z
@@ -27,7 +29,6 @@ import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Lazy (Lazy, force)
-import Data.Maybe
 import Data.List.Lazy (List)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
@@ -39,19 +40,19 @@ derive newtype instance lazyThreadId :: Z.Lazy ThreadId
 
 -- | A thread either is a result or corresponds to a symbol in the regular
 -- expression, which is expected by that thread.
-data Thread s r =
+data Thread c r =
   Thread
     { threadId_ :: ThreadId
-    , _threadCont :: s -> List (Thread s r)
+    , _threadCont :: c -> List (Thread c r)
     }
   | Accept r
 
-mkThread :: forall s r. ThreadId -> (s -> List (Thread s r)) -> Thread s r
+mkThread :: forall c r. ThreadId -> (c -> List (Thread c r)) -> Thread c r
 mkThread i c = Thread { threadId_: i, _threadCont: c }
 
 -- | Returns thread identifier. This will be 'Just' for ordinary threads and
 -- 'Nothing' for results.
-threadId :: forall s r. Thread s r -> Maybe ThreadId
+threadId :: forall c r. Thread c r -> Maybe ThreadId
 threadId (Thread { threadId_: i }) = Just i
 threadId _ = Nothing
 
@@ -62,8 +63,6 @@ derive instance ordGreediness :: Ord Greediness
 derive instance genericGreedines :: Generic Greediness _
 instance showGreediness :: Show Greediness where
   show = genericShow
--- derive instance readGreediness :: Read Greediness
--- derive instance enumGreediness :: Enum Greediness
 
 -- | Type of regular expressions that recognize symbols of type @s@ and
 -- produce a result of type @a@.
@@ -92,22 +91,22 @@ instance showGreediness :: Show Greediness where
 --
 -- * 'some' @ra@ matches concatenation of one or more strings matched by @ra@
 -- and returns the list of @ra@'s return values on those strings.
-data RE' s a b =
+data RE' c a b =
   Eps
-  | Symbol ThreadId (s -> Maybe a)
-  | Alt (RE s a) (RE s a)
-  | App (RE s (b -> a)) (RE s b)
-  | Fmap (b -> a) (RE s b)
+  | Symbol ThreadId (c -> Maybe a)
+  | Alt (RE c a) (RE c a)
+  | App (RE c (b -> a)) (RE c b)
+  | Fmap (b -> a) (RE c b)
   | Fail
-  | Rep Greediness (a -> b -> a) a (RE s b)
-  | Void (RE s b)
+  | Rep Greediness (a -> b -> a) a (RE c b)
+  | Void (RE c b)
 
 -- we don't actually care about b
-newtype RE s a = RE (Lazy (Exists (RE' s a)))
-derive instance newtypeRE :: Newtype (RE s a) _
-derive newtype instance lazyRE :: Z.Lazy (RE s a)
+newtype RE c a = RE (Lazy (Exists (RE' c a)))
+derive instance newtypeRE :: Newtype (RE c a) _
+derive newtype instance lazyRE :: Z.Lazy (RE c a)
 
-instance showRE :: Show (RE s a) where
+instance showRE :: Show (RE c a) where
   show = runFoldRE_ {
     eps: "Eps",
     symbol: \_ _ -> "Symbol threadId? symbolToOuput?",
@@ -120,76 +119,82 @@ instance showRE :: Show (RE s a) where
   }
 
 -- don't export me
-mkRE :: forall s a b. RE' s a b -> RE s a
+mkRE :: forall c a b. RE' c a b -> RE c a
 mkRE = RE <<< pure <<< mkExists
 
 -- safe constructors
 
-mkEps :: forall s. RE s Unit
+mkEps :: forall c. RE c Unit
 mkEps = mkRE Eps
 
-mkSymbol :: forall s a. ThreadId -> (s -> Maybe a) -> RE s a
+mkSymbol :: forall c a. ThreadId -> (c -> Maybe a) -> RE c a
 mkSymbol i f = mkRE $ Symbol i f
 
-mkAlt :: forall s a. RE s a -> RE s a -> RE s a
+mkAlt :: forall c a. RE c a -> RE c a -> RE c a
 mkAlt ma mb = mkRE $ Alt ma mb
 
-mkApp :: forall s a b. RE s (b -> a) -> RE s b -> RE s a
+mkApp :: forall c a b. RE c (b -> a) -> RE c b -> RE c a
 mkApp mf mx = mkRE $ App mf mx
 
-mkFmap :: forall s a b. (b -> a) -> RE s b -> RE s a
+mkFmap :: forall c a b. (b -> a) -> RE c b -> RE c a
 mkFmap f x = mkRE $ Fmap f x
 
-mkFail :: forall s a. RE s a
+mkFail :: forall c a. RE c a
 mkFail = mkRE Fail
 
-mkRep :: forall s a b.
+-- | Match zero or more instances of the given expression, which are combined using
+-- the given folding function.
+--
+-- 'Greediness' argument controls whether this regular expression should match
+-- as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
+-- of the underlying expression.
+mkRep :: forall c a b.
          Greediness       -- repetition may be greedy or not
          -> (a -> b -> a) -- folding function (like in foldl)
          -> a             -- the value for zero matches, and also the initial value
                           -- for the folding function
-         -> RE s b
-         -> RE s a
+         -> RE c b
+         -> RE c a
 mkRep g op z x = mkRE $ Rep g op z x
 
-mkVoid :: forall s a. RE s a -> RE s Unit
+mkVoid :: forall c a. RE c a -> RE c Unit
 mkVoid x = mkRE $ Void x
 
 
 -- | 'RE' is a profunctor. This is its contravariant map.
-comapRe :: forall s t a. (t -> s) -> RE s a -> RE t a
-comapRe f = runFoldRE {
+contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
+contramapRe f = runFoldRE {
     eps:               mkEps,
     symbol: \t p    -> mkSymbol t (p <<< f),
-    alt: \r1 r2     -> mkAlt (comapRe f r1) (comapRe f r2),
-    app: \r1 r2     -> mkApp (comapRe f r1) (comapRe f r2),
-    fmap: \g r      -> mkFmap g (comapRe f r),
+    alt: \r1 r2     -> mkAlt (contramapRe f r1) (contramapRe f r2),
+    app: \r1 r2     -> mkApp (contramapRe f r1) (contramapRe f r2),
+    fmap: \g r      -> mkFmap g (contramapRe f r),
     fail:              mkFail,
-    rep: \gr fn a r -> mkRep gr fn a (comapRe f r),
-    void: \r        -> mkVoid (comapRe f r)
+    rep: \gr fn a r -> mkRep gr fn a (contramapRe f r),
+    void: \r        -> mkVoid (contramapRe f r)
   }
 
-instance profunctorRe :: Profunctor (RE) where
-  dimap f g r = g <$> comapRe f r
+instance profunctorRe :: Profunctor RE where
+  dimap f g r = g <$> contramapRe f r
 
 
 -- for pattern matching where we want to remember that `a = Unit` for Eps and Void.
-type FoldRE s a t = {
+type FoldRE c a t = {
   eps :: t Unit,
-  symbol :: ThreadId -> (s -> Maybe a) -> t a,
-  alt :: RE s a -> RE s a -> t a,
-  app :: forall b. RE s (b -> a) -> RE s b -> t a,
-  fmap :: forall b. (b -> a) -> RE s b -> t a,
+  symbol :: ThreadId -> (c -> Maybe a) -> t a,
+  alt :: RE c a -> RE c a -> t a,
+  app :: forall b. RE c (b -> a) -> RE c b -> t a,
+  fmap :: forall b. (b -> a) -> RE c b -> t a,
   fail :: t a,
   rep :: forall b. Greediness
           -> (a -> b -> a)
           -> a
-          -> RE s b
+          -> RE c b
           -> t a,
-  void :: forall b. RE s b -> t Unit
+  void :: forall b. RE c b -> t Unit
 }
 
-runFoldRE' :: forall s a t. FoldRE s a t -> forall b. RE' s a b -> t a
+runFoldRE' :: forall c a t. FoldRE c a t -> forall b. RE' c a b -> t a
 runFoldRE' fld x = case x of
   Eps -> unsafeCoerce fld.eps  -- `a = Unit`, trust us
   Symbol t p -> fld.symbol t p
@@ -200,27 +205,27 @@ runFoldRE' fld x = case x of
   Rep g op z re -> fld.rep g op z re
   Void a -> unsafeCoerce fld.void a  -- `a = Unit`, trust us
 
-runFoldRE :: forall s a t. FoldRE s a t -> RE s a -> t a
+runFoldRE :: forall c a t. FoldRE c a t -> RE c a -> t a
 runFoldRE fld (RE re) = runExists (runFoldRE' fld) $ force re
 
 
 -- for pattern matching where we want to forget that `a = Unit` for Eps and Void.
-type FoldRE_ s a r = {
+type FoldRE_ c a r = {
   eps :: r,
-  symbol :: ThreadId -> (s -> Maybe a) -> r,
-  alt :: RE s a -> RE s a -> r,
-  app :: forall b. RE s (b -> a) -> RE s b -> r,
-  fmap :: forall b. (b -> a) -> RE s b -> r,
+  symbol :: ThreadId -> (c -> Maybe a) -> r,
+  alt :: RE c a -> RE c a -> r,
+  app :: forall b. RE c (b -> a) -> RE c b -> r,
+  fmap :: forall b. (b -> a) -> RE c b -> r,
   fail :: r,
   rep :: forall b. Greediness
           -> (a -> b -> a)
           -> a
-          -> RE s b
+          -> RE c b
           -> r,
-  void :: forall b. RE s b -> r
+  void :: forall b. RE c b -> r
 }
 
-runFoldRE_' :: forall s a r. FoldRE_ s a r -> forall b. RE' s a b -> r
+runFoldRE_' :: forall c a r. FoldRE_ c a r -> forall b. RE' c a b -> r
 runFoldRE_' fld x = case x of
   Eps -> fld.eps
   Symbol t p -> fld.symbol t p
@@ -231,22 +236,22 @@ runFoldRE_' fld x = case x of
   Rep g op z re -> fld.rep g op z re
   Void a -> fld.void a
 
-runFoldRE_ :: forall s a r. FoldRE_ s a r -> RE s a -> r
+runFoldRE_ :: forall c a r. FoldRE_ c a r -> RE c a -> r
 runFoldRE_ fld (RE re) = runExists (runFoldRE_' fld) $ force re
 
-instance functorRe :: Functor (RE s) where
+instance functorRe :: Functor (RE c) where
   map f x = mkFmap f x
 
-instance applyRe :: Apply (RE s) where
+instance applyRe :: Apply (RE c) where
   apply mf mx = mkApp mf mx
 
-instance applicativeRe :: Applicative (RE s) where
+instance applicativeRe :: Applicative (RE c) where
   pure x = const x <$> mkEps
 
-instance altRe :: Alt (RE s) where
+instance altRe :: Alt (RE c) where
   alt a1 a2 = mkAlt a1 a2
 
-instance plusRe :: Plus (RE s) where
+instance plusRe :: Plus (RE c) where
   empty = mkFail
 
-instance alternativeRe :: Alternative (RE s)
+instance alternativeRe :: Alternative (RE c)

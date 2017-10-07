@@ -13,7 +13,8 @@
 
 module Data.Regex.Applicative (
   module Data.Regex.Applicative.Types,
-  module Data.Regex.Applicative.Interface
+  module Data.Regex.Applicative.Interface,
+  module Control.Applicative
 ) where
 
 import Data.Regex.Applicative.Types (
@@ -34,11 +35,9 @@ import Data.Regex.Applicative.Interface (
   , msym
   , anySym
   , str
-  , reFoldl
   , few
   , some
   , many
---   , comap
   , withMatched
   , match
   , (=~)
@@ -50,4 +49,4 @@ import Data.Regex.Applicative.Interface (
   , findLongestInfix
   , findShortestInfix
 )
--- import Control.Applicative
+import Control.Applicative
