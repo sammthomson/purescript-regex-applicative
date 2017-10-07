@@ -6,7 +6,6 @@ import Control.Monad.Gen (elements)
 import Control.Plus (empty)
 import Data.List.Lazy (List, fromFoldable, nil, (:))
 import Data.Maybe (Maybe(..), isJust)
-import Data.Newtype (class Newtype, unwrap)
 import Data.NonEmpty ((:|))
 import Data.Regex.Applicative (RE, few, many, findFirstPrefix, str, sym, withMatched, (=~))
 import Data.String (toCharArray)
@@ -23,28 +22,25 @@ import Test.Spec.Runner (run)
 
 -- Small alphabets
 newtype A = A Char
-derive instance newtypeA :: Newtype A _
 derive newtype instance showA :: Show A
 instance arbA :: Arbitrary A where
   arbitrary = elements $ A 'a' :| []
 unA :: A -> Char
-unA = unwrap
+unA (A c) = c
 
 newtype AB = AB Char
-derive instance newtypeAB :: Newtype AB _
 derive newtype instance showAB :: Show AB
 instance arbAB :: Arbitrary AB where
   arbitrary = elements $ AB 'a' :| [AB 'b']
 unAB :: AB -> Char
-unAB = unwrap
+unAB (AB c) = c
 
 newtype ABC = ABC Char
-derive instance newtypeABC :: Newtype ABC _
 derive newtype instance showABC :: Show ABC
 instance arbABC :: Arbitrary ABC where
   arbitrary = elements $ ABC 'a' :| [ABC 'b', ABC 'c']
 unABC :: ABC -> Char
-unABC = unwrap
+unABC (ABC c) = c
 
 -- Example Regexes
 
