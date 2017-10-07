@@ -18,15 +18,14 @@ module Data.Regex.Applicative.Types (
 import Data.Maybe
 
 import Control.Alt (class Alt, (<$>))
-import Control.Alternative (class Alternative, pure)
+import Control.Alternative (class Alternative)
 import Control.Lazy as Z
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Lazy (Lazy, force)
+import Data.Lazy (Lazy)
 import Data.List.Lazy (List)
-import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Show, show, ($), (<<<), (<>))
 
@@ -97,9 +96,9 @@ data RE' c a b =
   | Rep Greediness (a -> b -> a) a (RE c b)
 
 -- we don't actually care about b
-newtype RE c a = RE (Lazy (Exists (RE' c a)))
-derive instance newtypeRE :: Newtype (RE c a) _
-derive newtype instance lazyRE :: Z.Lazy (RE c a)
+newtype RE c a = RE (Exists (RE' c a))
+-- derive instance newtypeRE :: Newtype (RE c a) _
+-- derive newtype instance lazyRE :: Z.Lazy (RE c a)
 
 instance showRE :: Show (RE c a) where
   show = runFoldRE {
@@ -114,7 +113,7 @@ instance showRE :: Show (RE c a) where
 
 -- don't export me
 mkRE :: forall c a b. RE' c a b -> RE c a
-mkRE = RE <<< pure <<< mkExists
+mkRE = RE <<< mkExists
 
 -- constructors
 
@@ -167,7 +166,7 @@ instance profunctorRe :: Profunctor RE where
   dimap f g r = g <$> contramapRe f r
 
 
--- for pattern matching where we want to forget that `a = Unit` for Eps and Void.
+-- eliminator for RE
 type FoldRE c a r = {
   eps :: a -> r,
   symbol :: ThreadId -> (c -> Maybe a) -> r,
@@ -193,7 +192,7 @@ runFoldRE' fld x = case x of
   Rep g op z re -> fld.rep g op z re
 
 runFoldRE :: forall c a r. FoldRE c a r -> RE c a -> r
-runFoldRE fld (RE re) = runExists (runFoldRE' fld) $ force re
+runFoldRE fld (RE re) = runExists (runFoldRE' fld) re
 
 instance functorRe :: Functor (RE c) where
   map f x = mkFmap f x

@@ -11,7 +11,7 @@ import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, 
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(..), swap)
-import Prelude (class Eq, class Semigroup, Ordering(GT), compare, const, flip, id, map, not, unit, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
+import Prelude (class Eq, class Semigroup, Ordering(GT), compare, flip, id, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
 -- | `(v)*`. Matches `v` 0 or more times.
@@ -20,7 +20,7 @@ many v = reverse <$> mkRep Greedy (flip (:)) nil v
 
 -- | `(v)+`.  Matches `v` 0 or more times.
 some :: forall c a. RE c a -> RE c (List a)
-some v = (:) <$> v <*> defer (\_ -> many v)
+some v = (:) <$> v <*> many v
 
 -- | Match and return a single symbol which satisfies the predicate
 psym :: forall c. (c -> Boolean) -> RE c c

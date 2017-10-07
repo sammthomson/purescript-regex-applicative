@@ -11,7 +11,7 @@ import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (class Newtype, wrap, unwrap)
 import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, runFoldRE)
 import Data.Tuple (Tuple(..))
-import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, unit, (#), ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
+import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
 
 
 compile :: forall s a r.
