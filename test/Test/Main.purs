@@ -4,7 +4,7 @@ import Control.Alt ((<|>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Gen (elements)
 import Control.Plus (empty)
-import Data.List.Lazy (List, concat, fromFoldable, nil, (:))
+import Data.List.Lazy (List, fromFoldable, nil, (:))
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (class Newtype, unwrap)
 import Data.NonEmpty ((:|))
@@ -12,11 +12,10 @@ import Data.Regex.Applicative (RE, few, many, findFirstPrefix, str, sym, withMat
 import Data.String (toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Show, Unit, discard, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
+import Prelude (class Eq, class Show, Unit, discard, join, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
-import Test.Spec.Assertions (shouldEqual)
 import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
@@ -138,7 +137,7 @@ prop_withMatched =
     \s ->
       case map unAB s =~ re of
         Nothing -> Success
-        Just (Tuple x y) -> concat x ==? y
+        Just (Tuple x y) -> join x ==? y
 
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
@@ -156,7 +155,7 @@ main = run [consoleReporter] $ do
   describe "Tests" $ do
     describe "Matching vs reference" $ do
       let a1 = 'a' : nil
-      it "re0 fixture" $ (a1 =~ re0) `shouldEqual` (reference re0 a1)
+      it "re0 fixture" $ quickCheck $ (a1 =~ re0) ==? reference re0 a1
       it "re0" $ quickCheck' 10 $ propMap re0 unA
       it "re1" $ quickCheck $ propMap re1 unA
       it "re2" $ quickCheck $ propMap re2 unAB
@@ -181,14 +180,14 @@ main = run [consoleReporter] $ do
     describe "Matching functions" $ do
       describe "findFirstPrefix" $ do
         it "t1" $ quickCheck $
-            (findFirstPrefix (str "a" <|> str "ab") (fromFoldable $ toCharArray "abc")) ==?
-            (Just (Tuple ('a' : nil) ('b' : 'c' : nil)))
+            findFirstPrefix (str "a" <|> str "ab") (toCharArray "abc") ==?
+            Just (Tuple ('a' : nil) ('b' : 'c' : nil))
         it "t2" $ quickCheck $
-            (findFirstPrefix (str "ab" <|> str "a") (fromFoldable $ toCharArray "abc")) ==?
-            (Just (Tuple ('a' : 'b' : nil) ('c' : nil)))
-      --   it "t3" $ quickCheck $
-      --       (findFirstPrefix "bc" "abc") ==?
-      --       Nothing
+            findFirstPrefix (str "ab" <|> str "a") (toCharArray "abc") ==?
+            Just (Tuple ('a' : 'b' : nil) ('c' : nil))
+        it "t3" $ quickCheck $
+            findFirstPrefix (str "bc") (toCharArray "abc") ==?
+            Nothing
       -- describe "findFirstInfix" $ do
       --   it "t1" $ quickCheck $
       --       (findFirstInfix ("a" <|> "ab") "tabc") ==?

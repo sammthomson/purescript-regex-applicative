@@ -140,8 +140,9 @@ match re =
 -- >Just ("ab","c")
 -- >Text.Regex.Applicative> findFirstPrefix "bc" "abc"
 -- >Nothing
-findFirstPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
-findFirstPrefix re s = go (compile re) s Nothing
+findFirstPrefix :: forall c a t. Foldable t =>
+                   RE c a -> t c -> Maybe (Tuple a (List c))
+findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
   where
   walk obj lst = case uncons lst of
     Nothing -> Tuple obj Nothing
@@ -177,8 +178,9 @@ findFirstPrefix re s = go (compile re) s Nothing
 -- >Just (Left "if"," foo")
 -- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "iffoo"
 -- >Just (Right "iffoo","")
-findLongestPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
-findLongestPrefix re s = go (compile re) s Nothing
+findLongestPrefix :: forall c a t. Foldable t =>
+                     RE c a -> t c -> Maybe (Tuple a (List c))
+findLongestPrefix re s = go (compile re) (fromFoldable s) Nothing
   where
   go obj s' resOld =
     let res = (map (flip Tuple s') $ head $ results obj) <|> resOld
@@ -189,8 +191,9 @@ findLongestPrefix re s = go (compile re) s Nothing
         Just { head, tail } -> go (step head obj) tail res
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
-findShortestPrefix :: forall c a. RE c a -> List c -> Maybe (Tuple a (List c))
-findShortestPrefix re s = go (compile re) s
+findShortestPrefix :: forall c a t. Foldable t =>
+                      RE c a -> t c -> Maybe (Tuple a (List c))
+findShortestPrefix re s = go (compile re) (fromFoldable s)
   where
   go obj s' =
     case uncons $ results obj of
@@ -204,10 +207,11 @@ findShortestPrefix re s = go (compile re) s
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findFirstInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
+findFirstInfix :: forall c a t. Foldable t =>
+                  RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
-  findFirstPrefix (Tuple <$> few anySym <*> re) s
+  findFirstPrefix (Tuple <$> few anySym <*> re) (fromFoldable s)
 
 -- Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. RE c (Tuple Int (List c))
@@ -265,15 +269,15 @@ gotResult _ = false
 -- choice)
 -- 3.3. If they are produced on the different steps, choose the later one (since
 -- they have the same prefixes, later means longer)
-findExtremalInfix :: forall c a.
+findExtremalInfix :: forall c a t. Foldable t =>
      -- function to combine a later result (first arg) to an earlier one (second
      -- arg)
      (InfixMatchingState c a -> InfixMatchingState c a -> InfixMatchingState c a)
   -> RE c a
-  -> List c
+  -> t c
   -> Maybe (Tuple (List c) (Tuple a (List c)))
 findExtremalInfix newOrOld re s =
-  case go (compile $ Tuple <$> prefixCounter <*> re) s NoResult of
+  case go (compile $ Tuple <$> prefixCounter <*> re) (fromFoldable s) NoResult of
     NoResult -> Nothing
     GotResult r ->
       Just (Tuple (r.prefixStr) (Tuple (r.result) (r.postfixStr)))
@@ -301,14 +305,16 @@ findExtremalInfix newOrOld re s =
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findLongestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findLongestInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
-findLongestInfix = findExtremalInfix preferOver
+findLongestInfix :: forall c a t. Foldable t =>
+                    RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
+findLongestInfix r = findExtremalInfix preferOver r <<< fromFoldable
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- Otherwise behaves like 'findShortestPrefix'. Returns the result together with
 -- the prefix and suffix of the string surrounding the match.
-findShortestInfix :: forall c a. RE c a -> List c -> Maybe (Tuple (List c) (Tuple a (List c)))
-findShortestInfix = findExtremalInfix $ flip preferOver
+findShortestInfix :: forall c a t. Foldable t =>
+                     RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
+findShortestInfix r = findExtremalInfix (flip preferOver) r <<< fromFoldable
 
 -- | Replace matches of the regular expression with its value.
 --
