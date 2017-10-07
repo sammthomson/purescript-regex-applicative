@@ -7,7 +7,7 @@ import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, runFoldRE)
+import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, elimRE)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(..), swap)
@@ -40,19 +40,6 @@ anySym :: forall c. RE c c
 anySym = msym Just
 
 -- | Match and return the given sequence of symbols.
---
--- Note that there is an 'IsString' instance for regular expression, so
--- if you enable the @OverloadedStrings@ language extension, you can write
--- @str \"foo\"@ simply as @\"foo\"@.
---
--- Example:
---
--- >{-# LANGUAGE OverloadedStrings #-}
--- >import Text.Regex.Applicative
--- >
--- >number = "one" *> pure 1  <|>  "two" *> pure 2
--- >
--- >main = print $ "two" =~ number
 arr :: forall a t. Eq a => Traversable t => t a -> RE a (t a)
 arr = traverse sym
 
@@ -82,7 +69,7 @@ withMatched r = case go r of R r' -> r' where
   applyTuple :: forall x y z. Semigroup z => Tuple (x -> y) z -> Tuple x z -> Tuple y z
   applyTuple f x = swap $ swap f <*> swap x
   go :: RE c a -> R c a
-  go = runFoldRE {
+  go = elimRE {
     eps: \a -> R $ flip Tuple nil <$> mkEps a,
     symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
     alt: \a b -> R $ withMatched a <|> withMatched b,

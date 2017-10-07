@@ -12,7 +12,7 @@ module Data.Regex.Applicative.Types (
   mkFmap,
   mkFail,
   mkRep,
-  runFoldRE
+  elimRE
 ) where
 
 import Data.Maybe
@@ -59,7 +59,7 @@ derive instance genericGreedines :: Generic Greediness _
 instance showGreediness :: Show Greediness where
   show = genericShow
 
--- | Type of regular expressions that recognize symbols of type @s@ and
+-- | Type of regular expressions that recognize symbols of type @c@ and
 -- produce a result of type @a@.
 --
 -- Regular expressions can be built using 'Functor', 'Applicative' and
@@ -97,11 +97,9 @@ data RE' c a b =
 
 -- we don't actually care about b
 newtype RE c a = RE (Exists (RE' c a))
--- derive instance newtypeRE :: Newtype (RE c a) _
--- derive newtype instance lazyRE :: Z.Lazy (RE c a)
 
 instance showRE :: Show (RE c a) where
-  show = runFoldRE {
+  show = elimRE {
     eps: \_ -> "Eps ?",
     symbol: \_ _ -> "Symbol threadId? symbolToOuput?",
     app: \f x -> "App (" <> show f <> ") (" <> show x <> ")",
@@ -152,7 +150,7 @@ mkRep g op z x = mkRE $ Rep g op z x
 
 -- | 'RE' is a profunctor. This is its contravariant map.
 contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
-contramapRe f = runFoldRE {
+contramapRe f = elimRE {
     eps:               mkEps,
     symbol: \t p    -> mkSymbol t (p <<< f),
     alt: \r1 r2     -> mkAlt (contramapRe f r1) (contramapRe f r2),
@@ -181,18 +179,18 @@ type FoldRE c a r = {
           -> r
 }
 
-runFoldRE' :: forall c a r. FoldRE c a r -> forall b. RE' c a b -> r
-runFoldRE' fld x = case x of
-  Eps a -> fld.eps a
-  Symbol t p -> fld.symbol t p
-  Alt a b -> fld.alt a b
-  App ff b -> fld.app ff b
-  Fmap f x -> fld.fmap f x
-  Fail -> fld.fail
-  Rep g op z re -> fld.rep g op z re
+elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
+elimRE elim (RE re) = runExists go re where
+  go :: forall b. RE' c a b -> r
+  go x = case x of
+    Eps a -> elim.eps a
+    Symbol t p -> elim.symbol t p
+    Alt a b -> elim.alt a b
+    App ff b -> elim.app ff b
+    Fmap f x -> elim.fmap f x
+    Fail -> elim.fail
+    Rep g op z re -> elim.rep g op z re
 
-runFoldRE :: forall c a r. FoldRE c a r -> RE c a -> r
-runFoldRE fld (RE re) = runExists (runFoldRE' fld) re
 
 instance functorRe :: Functor (RE c) where
   map f x = mkFmap f x

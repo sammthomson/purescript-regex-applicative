@@ -14,17 +14,16 @@
 
 module Test.Reference where
 
-import Control.Alternative (class Alt, class Alternative, empty, map, pure, (<*>), (<|>))
+import Control.Alternative (class Alt, class Alternative, empty, pure, (<$>), (<*>), (<|>))
 import Control.Applicative (class Applicative, class Apply)
-import Control.Lazy (class Lazy)
 import Control.Monad (class Bind, class Monad, ap, liftM1, (>>=))
 import Control.Plus (class Plus)
 import Data.Foldable (class Foldable)
-import Data.List.Lazy (List, filter, fromFoldable, nil, null, uncons, (:))
-import Data.Maybe (Maybe(..))
+import Data.List.Lazy (List, filter, fromFoldable, head, nil, null, uncons, (:))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), RE)
-import Data.Regex.Applicative.Types (runFoldRE)
-import Data.Tuple (Tuple(..), snd)
+import Data.Regex.Applicative.Types (elimRE)
+import Data.Tuple (Tuple(..), fst, snd)
 import Debug.Trace (class DebugWarning, traceShow)
 import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (<<<), (<>))
 
@@ -34,27 +33,30 @@ import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (
 -- | of the input yet to be matched.
 newtype P c a = P (List c -> List (Tuple a (List c)))
 
-derive newtype instance lazyP :: Lazy (P c a)
-
 instance functorP :: Functor (P c) where
   map = liftM1
 
+-- concat
 instance applyP :: Apply (P c) where
   apply = ap
 
+-- eps
 instance applicativeP :: Applicative (P c) where
-  pure x = P $ \s -> (Tuple x s) : nil
+  pure a = P $ \s -> (Tuple a s) : nil
 
+-- concat, where second re can depend on output of first
 instance bindP :: Bind (P c) where
-  bind (P a) k =
-    P \s -> a s >>= \(Tuple x s') -> case k x of P p -> p s'
+  bind (P parse) f =
+    P \s -> parse s >>= \(Tuple a rem) -> case f a of P parse' -> parse' rem
 
 instance monadP :: Monad (P c)
 
+-- or
 instance altP :: Alt (P c) where
   alt (P a1) (P a2) =
     P \s -> a1 s <> a2 s
 
+-- fail
 instance plusP :: Plus (P c) where
   empty = P $ const nil
   
@@ -68,16 +70,12 @@ char = P $ \s ->
     Just { head, tail } -> (Tuple head tail : nil)
 
 fromRE :: forall c a. RE c a -> P c a
-fromRE = runFoldRE {
-  eps: \a -> pure a,
-  symbol: (\_ p -> do
-    c <- char
-    case p c of
-      Just r -> pure r
-      Nothing -> empty),
+fromRE = elimRE {
+  eps: pure,
+  symbol: \_ p -> char >>= \c -> maybe empty pure $ p c,
   alt: \a1 a2 -> fromRE a1 <|> fromRE a2,
   app: \a1 a2 -> fromRE a1 <*> fromRE a2,
-  fmap: \f a -> map f $ fromRE a,
+  fmap: \f a -> f <$> fromRE a,
   rep: \g f b a ->
     let
       am = fromRE a
@@ -96,13 +94,15 @@ spyShow :: forall a. DebugWarning => Show a => (Unit -> a) -> a
 spyShow f = let r = f unit in traceShow r $ pure r
 
 runP :: forall c a t. Foldable t => P c a -> t c -> Maybe a
-runP (P m) s = case uncons $ filter (null <<< snd) $ m $ fromFoldable s of
-  Just { head: (Tuple r _) } -> Just r
-  _ -> Nothing
+runP (P parse) s =
+  let
+    fullMatches = filter (null <<< snd) $ parse (fromFoldable s)
+  in
+    fst <$> head fullMatches
 
 -- | 'reference' @r@ @s@ should give the same results as @s@ '=~' @r@.
 --
 -- However, this is not a very efficient implementation and is to be
 -- used for testing only.
 reference :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
-reference r s = runP (fromRE r) s
+reference = runP <<< fromRE

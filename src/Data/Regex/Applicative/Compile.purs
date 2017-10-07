@@ -9,7 +9,7 @@ import Data.List.Lazy (List, concatMap, nil, (:))
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (class Newtype, wrap, unwrap)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, runFoldRE)
+import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, elimRE)
 import Data.Tuple (Tuple(..))
 import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
 
@@ -57,11 +57,10 @@ compile2 :: forall s a r.
             Cont (a -> List (Thread s r)) ->
             List (Thread s r)
 compile2 = unwrap <<< go where
-  go = runFoldRE {
+  go = elimRE {
     eps: \a -> wrap \k -> emptyCont k a,
     symbol: \i p -> wrap \k ->
       let
-        t :: (a -> (List (Thread s r))) -> Thread s r
         t k' = mkThread i $ \s ->
           case p s of
             Just r -> k' r
@@ -122,7 +121,7 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
         List FSMState ->
         RE c' a' ->
         State (FSMMap c') (List FSMState)
-  go k = runFoldRE {
+  go k = elimRE {
     eps: \a -> pure k,  -- FIXME: what to do here?
     symbol:
       \i@(ThreadId n) p ->
