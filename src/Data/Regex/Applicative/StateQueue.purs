@@ -1,5 +1,5 @@
 -- | This internal module is exposed only for testing and benchmarking. You
--- don't need to import it.
+-- | don't need to import it.
 module Data.Regex.Applicative.StateQueue
   ( StateQueue
   , empty
@@ -7,7 +7,7 @@ module Data.Regex.Applicative.StateQueue
   , insertUnique
   , getElements
   , mkStateQueue
-  ) where
+) where
 
 import Data.List.Lazy (List, cons, nil, reverse)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)

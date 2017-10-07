@@ -12,21 +12,20 @@
 --------------------------------------------------------------------
 
 module Data.Regex.Applicative (
-  module Data.Regex.Applicative.Types,
-  module Data.Regex.Applicative.Interface,
-  module Control.Applicative
+  module Data.Regex.Applicative.Types
+  , module Data.Regex.Applicative.Interface
 ) where
 
 import Data.Regex.Applicative.Types (
-  Greediness(..),
-  RE,
-  mkEps,
-  mkSymbol,
-  mkAlt,
-  mkApp,
-  mkFmap,
-  mkFail,
-  mkRep
+  Greediness(..)
+  , RE
+  , mkEps
+  , mkSymbol
+  , mkAlt
+  , mkApp
+  , mkFmap
+  , mkFail
+  , mkRep
 )
 import Data.Regex.Applicative.Interface (
   sym
@@ -48,4 +47,3 @@ import Data.Regex.Applicative.Interface (
   , findLongestInfix
   , findShortestInfix
 )
-import Control.Applicative

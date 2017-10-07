@@ -27,7 +27,7 @@ psym :: forall c. (c -> Boolean) -> RE c c
 psym p = msym (\c -> if p c then Just c else Nothing)
 
 -- | Like 'psym', but allows to return a computed value instead of the
--- original symbol
+-- | original symbol
 msym :: forall c a. (c -> Maybe a) -> RE c a
 msym p = mkSymbol (defer \_ -> unsafeThrow "Not numbered symbol") p
 
@@ -47,15 +47,17 @@ str :: String -> RE Char (List Char)
 str s = fromFoldable <$> (arr $ toCharArray s)
 
 -- | Match zero or more instances of the given expression, but as
--- few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
--- is 'many'.
---
--- Examples:
---
--- >Text.Regex.Applicative> findFirstPrefix (few anySym  <* "b") "ababab"
--- >Just ("a","abab")
--- >Text.Regex.Applicative> findFirstPrefix (many anySym  <* "b") "ababab"
--- >Just ("ababa","")
+-- | few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
+-- | is 'many'.
+-- |
+-- | Examples:
+-- |
+-- | ```
+-- |     findFirstPrefix (few anySym  <* "b") "ababab"
+-- |     -- Just ("a","abab")
+-- |     findFirstPrefix (many anySym  <* "b") "ababab"
+-- |     -- Just ("ababa","")
+-- | ```
 few :: forall c a. RE c a -> RE c (List a)
 few a = reverse <$> mkRep NonGreedy (flip cons) nil a
 
@@ -87,15 +89,20 @@ matchFlipped = flip match
 infixl 2 matchFlipped as =~
 
 -- | Attempt to match a string of symbols against the regular expression.
--- Note that the whole string (not just some part of it) should be matched.
---
--- Examples:
---
--- >Text.Regex.Applicative> match (sym 'a' <|> sym 'b') "a"
--- >Just 'a'
--- >Text.Regex.Applicative> match (sym 'a' <|> sym 'b') "ab"
--- >Nothing
---
+-- | Note that the whole string (not just some part of it) should be matched.
+-- |
+-- | Examples:
+-- |
+-- | ```
+-- |    import Prelude
+-- |    import Control.Alt
+-- |    import Data.String (toCharArray)
+-- |
+-- |    match (sym 'a' <|> sym 'b') $ toCharArray "a"
+-- |    -- Just 'a'
+-- |    match (sym 'a' <|> sym 'b') $ toCharArray "ab"
+-- |    -- Nothing
+-- | ```
 match :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
 match re =
   let
@@ -104,23 +111,30 @@ match re =
     \s -> head $ results $ foldl (flip step) obj s
 
 -- | Find a string prefix which is matched by the regular expression.
---
--- Of all matching prefixes, pick one using left bias (prefer the left part of
--- '<|>' to the right part) and greediness.
---
--- This is the match which a backtracking engine (such as Perl's one) would find
--- first.
---
--- If match is found, the rest of the input is also returned.
---
--- Examples:
---
--- >Text.Regex.Applicative> findFirstPrefix ("a" <|> "ab") "abc"
--- >Just ("a","bc")
--- >Text.Regex.Applicative> findFirstPrefix ("ab" <|> "a") "abc"
--- >Just ("ab","c")
--- >Text.Regex.Applicative> findFirstPrefix "bc" "abc"
--- >Nothing
+-- |
+-- | Of all matching prefixes, pick one using left bias (prefer the left part of
+-- | '<|>' to the right part) and greediness.
+-- |
+-- | This is the match which a backtracking engine (such as Perl's one) would find
+-- | first.
+-- |
+-- | If match is found, the rest of the input is also returned.
+-- |
+-- | Examples:
+-- |
+-- | ```
+-- |    import Prelude
+-- |    import Control.Alt
+-- |    import Data.Regex.Applicative
+-- |    import Data.String (toCharArray)
+-- |
+-- |    findFirstPrefix (str "a" <|> str "ab") $ toCharArray "abc"
+-- |    -- Just ("a", "bc")
+-- |    findFirstPrefix (str "ab" <|> str "a") $ toCharArray "abc"
+-- |    -- Just ("ab", "c")
+-- |    findFirstPrefix "bc" "abc"
+-- |    -- Nothing
+-- | ```
 findFirstPrefix :: forall c a t. Foldable t =>
                    RE c a -> t c -> Maybe (Tuple a (List c))
 findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
@@ -144,21 +158,29 @@ findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
             Just { head, tail } -> go (step head obj') tail res
 
 -- | Find the longest string prefix which is matched by the regular expression.
---
--- Submatches are still determined using left bias and greediness, so this is
--- different from POSIX semantics.
---
--- If match is found, the rest of the input is also returned.
---
--- Examples:
---
--- >Text.Regex.Applicative Data.Char> let keyword = "if"
--- >Text.Regex.Applicative Data.Char> let identifier = many $ psym isAlpha
--- >Text.Regex.Applicative Data.Char> let lexeme = (Left <$> keyword) <|> (Right <$> identifier)
--- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "if foo"
--- >Just (Left "if"," foo")
--- >Text.Regex.Applicative Data.Char> findLongestPrefix lexeme "iffoo"
--- >Just (Right "iffoo","")
+-- |
+-- | Submatches are still determined using left bias and greediness, so this is
+-- | different from POSIX semantics.
+-- |
+-- | If match is found, the rest of the input is also returned.
+-- |
+-- | Examples:
+-- | ```
+-- |    import Prelude
+-- |    import Control.Alt
+-- |    import Data.Regex.Applicative
+-- |    import Data.Char.Unicode
+-- |    import Data.Either
+-- |    import Data.String
+-- |
+-- |    keyword = str "if"
+-- |    identifier = many $ psym isAlpha
+-- |    lexeme = (Left <$> keyword) <|> (Right <$> identifier)
+-- |    findLongestPrefix lexeme $ toCharArray "if foo"
+-- |    -- Just (Tuple (Left ('i' : 'f' : nil)) (' ' : 'f' : 'o' : 'o' : nil))
+-- |    findLongestPrefix lexeme $ toCharArray "iffoo"
+-- |    -- Just (Tuple (Right ('i' : 'f' : 'f' : 'o' : 'o' : nil)) nil)
+-- | ```
 findLongestPrefix :: forall c a t. Foldable t =>
                      RE c a -> t c -> Maybe (Tuple a (List c))
 findLongestPrefix re s = go (compile re) (fromFoldable s) Nothing
@@ -186,15 +208,15 @@ findShortestPrefix re s = go (compile re) (fromFoldable s)
           Just { head, tail } -> go (step head obj) tail
 
 -- | Find the leftmost substring that is matched by the regular expression.
--- Otherwise behaves like 'findFirstPrefix'. Returns the result together with
--- the prefix and suffix of the string surrounding the match.
+-- | Otherwise behaves like 'findFirstPrefix'. Returns the result together with
+-- | the prefix and suffix of the string surrounding the match.
 findFirstInfix :: forall c a t. Foldable t =>
                   RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
   findFirstPrefix (Tuple <$> few anySym <*> re) (fromFoldable s)
 
--- Auxiliary function for findExtremeInfix
+-- | Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. RE c (Tuple Int (List c))
 prefixCounter = second reverse <$> mkRep NonGreedy f (Tuple 0 nil) anySym
   where
@@ -208,7 +230,7 @@ data InfixMatchingState c a = GotResult
   }
   | NoResult
 
--- a `preferOver` b chooses one of a and b, giving preference to a
+-- | a `preferOver` b chooses one of a and b, giving preference to a
 preferOver :: forall c a.
   InfixMatchingState c a
   -> InfixMatchingState c a
@@ -239,17 +261,17 @@ gotResult :: forall c a. InfixMatchingState c a -> Boolean
 gotResult (GotResult _) = true
 gotResult _ = false
 
--- Algorithm for finding leftmost longest infix match:
---
--- 1. Add a thread /.*?/ to the begginning of the regexp
--- 2. As soon as we get first accept, we delete that thread
--- 3. When we get more than one accept, we choose one by the following criteria:
--- 3.1. Compare by the length of prefix (since we are looking for the leftmost
--- match)
--- 3.2. If they are produced on the same step, choose the first one (left-biased
--- choice)
--- 3.3. If they are produced on the different steps, choose the later one (since
--- they have the same prefixes, later means longer)
+-- | Algorithm for finding leftmost longest infix match:
+-- |
+-- | 1. Add a thread /.*?/ to the begginning of the regexp
+-- | 2. As soon as we get first accept, we delete that thread
+-- | 3. When we get more than one accept, we choose one by the following criteria:
+-- | 3.1. Compare by the length of prefix (since we are looking for the leftmost
+-- | match)
+-- | 3.2. If they are produced on the same step, choose the first one (left-biased
+-- | choice)
+-- | 3.3. If they are produced on the different steps, choose the later one (since
+-- | they have the same prefixes, later means longer)
 findExtremalInfix :: forall c a t. Foldable t =>
      -- function to combine a later result (first arg) to an earlier one (second
      -- arg)
@@ -284,23 +306,31 @@ findExtremalInfix newOrOld re s =
 
 
 -- | Find the leftmost substring that is matched by the regular expression.
--- Otherwise behaves like 'findLongestPrefix'. Returns the result together with
--- the prefix and suffix of the string surrounding the match.
+-- | Otherwise behaves like 'findLongestPrefix'. Returns the result together with
+-- | the prefix and suffix of the string surrounding the match.
 findLongestInfix :: forall c a t. Foldable t =>
                     RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findLongestInfix r = findExtremalInfix preferOver r <<< fromFoldable
 
 -- | Find the leftmost substring that is matched by the regular expression.
--- Otherwise behaves like 'findShortestPrefix'. Returns the result together with
--- the prefix and suffix of the string surrounding the match.
+-- | Otherwise behaves like 'findShortestPrefix'. Returns the result together with
+-- | the prefix and suffix of the string surrounding the match.
 findShortestInfix :: forall c a t. Foldable t =>
                      RE c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
 findShortestInfix r = findExtremalInfix (flip preferOver) r <<< fromFoldable
 
 -- | Replace matches of the regular expression with its value.
---
--- >Text.Regex.Applicative > replace ("!" <$ sym 'f' <* some (sym 'o')) "quuxfoofooooofoobarfobar"
--- >"quux!!!bar!bar"
+-- |
+-- | ```
+-- |    import Prelude
+-- |    import Data.Array as A
+-- |    import Data.Regex.Applicative
+-- |    import Data.List.Lazy hiding (some)
+-- |    import Data.String (fromCharArray, toCharArray)
+-- |
+-- |    fromCharArray $ A.fromFoldable $ replace (('!' : nil) <$ sym 'f' <* some (sym 'o')) $ fromFoldable $ toCharArray "quuxfoofooooofoobarfobar"
+-- |    "quux!!!bar!bar"
+-- | ```
 replace :: forall c. RE c (List c) -> List c -> List c
 replace r = ((#) nil) <<< go
   where go ys = case findLongestInfix r ys of

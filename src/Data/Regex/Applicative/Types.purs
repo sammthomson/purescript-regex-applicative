@@ -34,7 +34,7 @@ newtype ThreadId = ThreadId (Lazy Int)
 derive newtype instance lazyThreadId :: Z.Lazy ThreadId
 
 -- | A thread either is a result or corresponds to a symbol in the regular
--- expression, which is expected by that thread.
+-- | expression, which is expected by that thread.
 data Thread c r =
   Thread
     { threadId_ :: ThreadId
@@ -46,7 +46,7 @@ mkThread :: forall c r. ThreadId -> (c -> List (Thread c r)) -> Thread c r
 mkThread i c = Thread { threadId_: i, _threadCont: c }
 
 -- | Returns thread identifier. This will be 'Just' for ordinary threads and
--- 'Nothing' for results.
+-- | 'Nothing' for results.
 threadId :: forall c r. Thread c r -> Maybe ThreadId
 threadId (Thread { threadId_: i }) = Just i
 threadId _ = Nothing
@@ -60,32 +60,32 @@ instance showGreediness :: Show Greediness where
   show = genericShow
 
 -- | Type of regular expressions that recognize symbols of type @c@ and
--- produce a result of type @a@.
---
--- Regular expressions can be built using 'Functor', 'Applicative' and
--- 'Alternative' instances in the following natural way:
---
--- * @f@ '<$>' @ra@ matches iff @ra@ matches, and its return value is the result
--- of applying @f@ to the return value of @ra@.
---
--- * 'pure' @x@ matches the empty string (i.e. it does not consume any symbols),
--- and its return value is @x@
---
--- * @rf@ '<*>' @ra@ matches a string iff it is a concatenation of two
--- strings: one matched by @rf@ and the other matched by @ra@. The return value
--- is @f a@, where @f@ and @a@ are the return values of @rf@ and @ra@
--- respectively.
---
--- * @ra@ '<|>' @rb@ matches a string which is accepted by either @ra@ or @rb@.
--- It is left-biased, so if both can match, the result of @ra@ is used.
---
--- * 'empty' is a regular expression which does not match any string.
---
--- * 'many' @ra@ matches concatenation of zero or more strings matched by @ra@
--- and returns the list of @ra@'s return values on those strings.
---
--- * 'some' @ra@ matches concatenation of one or more strings matched by @ra@
--- and returns the list of @ra@'s return values on those strings.
+-- | produce a result of type @a@.
+-- |
+-- | Regular expressions can be built using 'Functor', 'Applicative' and
+-- | 'Alternative' instances in the following natural way:
+-- |
+-- | * @f@ '<$>' @ra@ matches iff @ra@ matches, and its return value is the result
+-- | of applying @f@ to the return value of @ra@.
+-- |
+-- | * 'pure' @x@ matches the empty string (i.e. it does not consume any symbols),
+-- | and its return value is @x@
+-- |
+-- | * @rf@ '<*>' @ra@ matches a string iff it is a concatenation of two
+-- | strings: one matched by @rf@ and the other matched by @ra@. The return value
+-- | is @f a@, where @f@ and @a@ are the return values of @rf@ and @ra@
+-- | respectively.
+-- |
+-- | * @ra@ '<|>' @rb@ matches a string which is accepted by either @ra@ or @rb@.
+-- | It is left-biased, so if both can match, the result of @ra@ is used.
+-- |
+-- | * 'empty' is a regular expression which does not match any string.
+-- |
+-- | * 'many' @ra@ matches concatenation of zero or more strings matched by @ra@
+-- | and returns the list of @ra@'s return values on those strings.
+-- |
+-- | * 'some' @ra@ matches concatenation of one or more strings matched by @ra@
+-- | and returns the list of @ra@'s return values on those strings.
 data RE' c a b =
   Eps a
   | Symbol ThreadId (c -> Maybe a)
@@ -134,11 +134,11 @@ mkFail :: forall c a. RE c a
 mkFail = mkRE Fail
 
 -- | Match zero or more instances of the given expression, which are combined using
--- the given folding function.
---
--- 'Greediness' argument controls whether this regular expression should match
--- as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
--- of the underlying expression.
+-- | the given folding function.
+-- |
+-- | 'Greediness' argument controls whether this regular expression should match
+-- | as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
+-- | of the underlying expression.
 mkRep :: forall c a b.
          Greediness       -- repetition may be greedy or not
          -> (a -> b -> a) -- folding function (like in foldl)

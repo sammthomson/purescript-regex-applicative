@@ -101,8 +101,8 @@ runP (P parse) s =
     fst <$> head fullMatches
 
 -- | 'reference' @r@ @s@ should give the same results as @s@ '=~' @r@.
---
--- However, this is not a very efficient implementation and is to be
--- used for testing only.
+-- |
+-- | However, this is not a very efficient implementation and is to be
+-- | used for testing only.
 reference :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
 reference = runP <<< fromRE

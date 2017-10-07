@@ -1,5 +1,4 @@
--- |
--- Collection of commonly used regular expressions.
+-- | Collection of commonly used regular expressions.
 module Data.Regex.Applicative.Common (
   -- * Digits
   digit,
@@ -10,7 +9,6 @@ module Data.Regex.Applicative.Common (
   hexadecimal
 ) where
 
--- import Data.Char
 import Control.Alt ((<|>))
 import Data.Char.Unicode (digitToInt, isDigit)
 import Data.Foldable (foldl)
@@ -24,7 +22,7 @@ digit :: RE Char Int
 digit = msym (\c -> if isDigit c then digitToInt c else Nothing)
 
 -- | Hexadecimal digit
--- i.e. @\'0\'@..@\'9\'@, @\'a\'@..@\'f\'@, @\'A\'@..@\'F\'@.
+-- | i.e. @\'0\'@..@\'9\'@, @\'a\'@..@\'f\'@, @\'A\'@..@\'F\'@.
 hexDigit :: RE Char Int
 hexDigit = msym digitToInt
 
