@@ -16,8 +16,8 @@ import Data.Set as S
 import Prelude (class Eq, class Show, show, ($), (<<<), (<>))
 
 -- | 'StateQueue' is a data structure that can efficiently insert elements
--- (preserving their order)
--- and check whether an element with the given 'Int' key is already in the queue.
+-- | (preserving their order)
+-- | and check whether an element with the given 'Int' key is already in the queue.
 newtype StateQueue a = StateQueue {
   elements :: List a,
   ids :: S.Set Int
@@ -31,10 +31,6 @@ derive instance eqStateQueue :: Eq a => Eq (StateQueue a)
 instance showStateQueue :: Show a => Show (StateQueue a) where
   show (StateQueue { elements, ids }) =
     "(StateQueue { elements: " <> show elements <> ", " <> show ids <> " })"
-
--- instance showStateQueue :: Show StateQueue where
---   show
-  
 
 instance foldableStateQueue :: Foldable StateQueue where
   foldr f a = foldr f a <<< getElements
@@ -67,8 +63,7 @@ insertUnique i v sq@StateQueue { ids, elements } =
     }
 
 -- | Insert an element in the state queue without a key.
---
--- Since 'insert' doesn't take a key, it won't affect any 'insertUnique'.
+-- | Since 'insert' doesn't take a key, it won't affect any 'insertUnique'.
 insert :: forall a.
           a
           -> StateQueue a

@@ -60,25 +60,21 @@ few :: forall c a. RE c a -> RE c (List a)
 few a = reverse <$> mkRep NonGreedy (flip cons) nil a
 
 
--- helper
-newtype R c a = R (RE c (Tuple a (List c)))
-
 -- | Return matched symbols as part of the return value
 withMatched :: forall c a. RE c a -> RE c (Tuple a (List c))
-withMatched r = case go r of R r' -> r' where
+withMatched = go where
   applyTuple :: forall x y z. Semigroup z => Tuple (x -> y) z -> Tuple x z -> Tuple y z
   applyTuple f x = swap $ swap f <*> swap x
-  go :: RE c a -> R c a
   go = elimRE {
-    eps: \a -> R $ flip Tuple nil <$> mkEps a,
-    symbol: \t p -> R $ mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
-    alt: \a b -> R $ withMatched a <|> withMatched b,
-    app: \a b -> R $ applyTuple <$> withMatched a
+    eps: \a -> flip Tuple nil <$> mkEps a,
+    symbol: \t p -> mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
+    alt: \a b -> withMatched a <|> withMatched b,
+    app: \a b -> applyTuple <$> withMatched a
                                 <*> withMatched b,
-    fmap: \f x -> R $ (f *** id) <$> withMatched x,
-    fail: R $ mkFail,
+    fmap: \f x -> (f *** id) <$> withMatched x,
+    fail: mkFail,
     rep: \gr f a0 x ->
-      R $ mkRep gr
+      mkRep gr
           (\(Tuple a s) (Tuple x' t) -> (Tuple (f a x') (s <> t)))
           (Tuple a0 nil)
           (withMatched x)

@@ -8,7 +8,6 @@ import Data.Lazy (force)
 import Data.List.Lazy (List, concatMap, nil, (:))
 import Data.Map as M
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
-import Data.Newtype (class Newtype, wrap, unwrap)
 import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, elimRE)
 import Data.Tuple (Tuple(..))
 import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
@@ -20,33 +19,26 @@ compile :: forall s a r.
            List (Thread s r)
 compile e k = compile2 e (SingleCont k)
 
-
-data Cont a = SingleCont a | EmptyNonEmpty a a
+data Cont a =
+  SingleCont a
+  | EmptyNonEmpty a a
 
 instance functorCont :: Functor Cont where
-  map f k =
-    case k of
-      SingleCont a -> SingleCont (f a)
-      EmptyNonEmpty a b -> EmptyNonEmpty (f a) (f b)
+  map f (SingleCont a) = SingleCont (f a)
+  map f (EmptyNonEmpty a b) = EmptyNonEmpty (f a) (f b)
 
 emptyCont :: forall a. Cont a -> a
-emptyCont k =
-  case k of
-    SingleCont a -> a
-    EmptyNonEmpty a _ -> a
+emptyCont (SingleCont a) = a
+emptyCont (EmptyNonEmpty a _) = a
 
 nonEmptyCont :: forall a. Cont a -> a
-nonEmptyCont k =
-  case k of
-    SingleCont a -> a
-    EmptyNonEmpty _ a -> a
+nonEmptyCont (SingleCont a) = a
+nonEmptyCont (EmptyNonEmpty _ a) = a
 
 
--- let's help out that poor type inference by making it clear that
--- `ContToList s r` is a type function of `a`.
-newtype ContToList s r a =
-  ContToList (Cont (a -> List (Thread s r)) -> List (Thread s r))
-derive instance newtypeContToList :: Newtype (ContToList s r a) _
+type ContToList s r a =
+  Cont (a -> List (Thread s r)) ->
+  List (Thread s r)
 
 -- The whole point of this module is this function, compile2.
 --
@@ -54,12 +46,10 @@ derive instance newtypeContToList :: Newtype (ContToList s r a) _
 -- one when the match is non-empty. See the "Rep" case for the reason.
 compile2 :: forall s a r.
             RE s a ->
-            Cont (a -> List (Thread s r)) ->
-            List (Thread s r)
-compile2 = unwrap <<< go where
-  go = elimRE {
-    eps: \a -> wrap \k -> emptyCont k a,
-    symbol: \i p -> wrap \k ->
+            ContToList s r a
+compile2 = elimRE {
+    eps: \a k -> emptyCont k a,
+    symbol: \i p k ->
       let
         t k' = mkThread i $ \s ->
           case p s of
@@ -72,7 +62,7 @@ compile2 = unwrap <<< go where
         a1 = compile2 n1
         a2 = compile2 n2
       in
-        ContToList \k -> case k of
+        \k -> case k of
           SingleCont k' ->
             a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
           EmptyNonEmpty ke kn ->
@@ -87,9 +77,9 @@ compile2 = unwrap <<< go where
       let
         a1 = compile2 n1
         a2 = compile2 n2
-      in wrap \k -> a1 k <> a2 k,
-    fail: wrap $ const nil,
-    fmap: \f n -> let a = compile2 n in wrap \k -> a $ map ((>>>) f) k,
+      in \k -> a1 k <> a2 k,
+    fail: const nil,
+    fmap: \f n -> let a = compile2 n in \k -> a $ map ((>>>) f) k,
     -- This is actually the point where we use the difference between
     -- continuations. For the inner RE the empty continuation is a
     -- "failing" one in order to avoid non-termination.
@@ -104,7 +94,7 @@ compile2 = unwrap <<< go where
                 (\_ -> nil)
                 (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
             (emptyCont k b')
-      in wrap $ threads b
+      in threads b
   }
 
 data FSMState
@@ -142,11 +132,10 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
         go cont n >>= \_ -> pure cont
   }
 
+  -- A simple (although a bit inefficient) way to find all entry points is
+  -- just to use 'go'
   findEntries :: forall s' a'. RE s' a' -> (List FSMState)
-  findEntries e' =
-    -- A simple (although a bit inefficient) way to find all entry points is
-    -- just to use 'go'
-    evalState (go nil e') M.empty
+  findEntries e' = evalState (go nil e') M.empty
 
 compile2_ :: forall s a r.
              RE s a ->

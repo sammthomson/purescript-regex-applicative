@@ -32,7 +32,6 @@ import Control.Monad.State (State, evalState, get, put)
 import Data.Foldable (foldl)
 import Data.Lazy (force)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
-import Data.Newtype (class Newtype)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
 import Data.Regex.Applicative.Types (RE, Thread(Accept, Thread), ThreadId(ThreadId), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, elimRE)
@@ -119,27 +118,21 @@ compile =
   flip Compile.compile (\x -> Accept x : nil) <<<
   renumber
 
--- help type inference out
-newtype R t b = R (State ThreadId (RE t b))
-derive instance newtypeR :: Newtype (R t b) _
-
 renumber :: forall c a. RE c a -> RE c a
 renumber e =
   let
-    go1 :: forall t b. RE t b -> State ThreadId (RE t b)
-    go1 x = case go x of R r -> r
-    go :: forall t b. RE t b -> R t b
+    go :: forall t b. RE t b -> State ThreadId (RE t b)
     go = elimRE {
-        eps: \a -> R $ pure $ mkEps a,
-        symbol: \_ p -> R $ mkSymbol <$> fresh <*> pure p,
-        alt: \a1 a2 -> R $ mkAlt <$> go1 a1 <*> go1 a2,
-        app: \a1 a2 -> R $ mkApp <$> go1 a1 <*> go1 a2,
-        fail: R $ pure mkFail,
-        fmap: \f a -> R $ mkFmap f <$> go1 a,
-        rep: \g f b a -> R $ mkRep g f b <$> go1 a
+        eps: \a -> pure $ mkEps a,
+        symbol: \_ p -> mkSymbol <$> fresh <*> pure p,
+        alt: \a1 a2 -> mkAlt <$> go a1 <*> go a2,
+        app: \a1 a2 -> mkApp <$> go a1 <*> go a2,
+        fail: pure mkFail,
+        fmap: \f a -> mkFmap f <$> go a,
+        rep: \g f b a -> mkRep g f b <$> go a
     }
   in
-    flip evalState (ThreadId (pure 1)) $ go1 e
+    flip evalState (ThreadId (pure 1)) $ go e
 
 fresh :: State ThreadId ThreadId
 fresh = do
