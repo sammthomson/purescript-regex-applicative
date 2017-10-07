@@ -1,13 +1,11 @@
 module Data.Regex.Applicative.Interface where
 
 import Control.Alternative ((<|>))
-import Control.Lazy (defer)
-import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, mkEps, mkFail, mkRep, mkSymbol, elimRE)
+import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), elimRE, mkEps, mkFail, mkRep, mkSymbol)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(..), swap)
@@ -28,8 +26,9 @@ psym p = msym (\c -> if p c then Just c else Nothing)
 
 -- | Like 'psym', but allows to return a computed value instead of the
 -- | original symbol
+-- 0 is a place-holder. will be renumbered during compilation
 msym :: forall c a. (c -> Maybe a) -> RE c a
-msym p = mkSymbol (defer \_ -> unsafeThrow "Not numbered symbol") p
+msym p = mkSymbol (ThreadId 0) p
 
 -- | Match and return the given symbol
 sym :: forall c. Eq c => c -> RE c c

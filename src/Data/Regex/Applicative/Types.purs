@@ -19,19 +19,18 @@ import Data.Maybe
 
 import Control.Alt (class Alt, (<$>))
 import Control.Alternative (class Alternative)
-import Control.Lazy as Z
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Lazy (Lazy)
 import Data.List.Lazy (List)
+import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Show, show, ($), (<<<), (<>))
 
 
-newtype ThreadId = ThreadId (Lazy Int)
-derive newtype instance lazyThreadId :: Z.Lazy ThreadId
+newtype ThreadId = ThreadId Int
+derive instance newtypeThreadId :: Newtype ThreadId _
 
 -- | A thread either is a result or corresponds to a symbol in the regular
 -- | expression, which is expected by that thread.
@@ -146,19 +145,21 @@ mkRep :: forall c a b.
                           -- for the folding function
          -> RE c b
          -> RE c a
-mkRep g op z x = mkRE $ Rep g op z x
+mkRep g op z r = mkRE $ Rep g op z r
 
 -- | 'RE' is a profunctor. This is its contravariant map.
 contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
-contramapRe f = elimRE {
-    eps:               mkEps,
-    symbol: \t p    -> mkSymbol t (p <<< f),
-    alt: \r1 r2     -> mkAlt (contramapRe f r1) (contramapRe f r2),
-    app: \r1 r2     -> mkApp (contramapRe f r1) (contramapRe f r2),
-    fmap: \g r      -> mkFmap g (contramapRe f r),
-    fail:              mkFail,
-    rep: \gr fn a r -> mkRep gr fn a (contramapRe f r)
-  }
+contramapRe f = go where
+  go :: forall a'. RE c a' -> RE t a'
+  go = elimRE {
+      eps:               mkEps,
+      symbol: \i p    -> mkSymbol i (p <<< f),  -- <- only place input is consumed
+      alt: \r1 r2     -> mkAlt (go r1) (go r2),
+      app: \r1 r2     -> mkApp (go r1) (go r2),
+      fmap: \g r      -> mkFmap g (go r),
+      fail:              mkFail,
+      rep: \g op z r -> mkRep g op z (go r)
+    }
 
 instance profunctorRe :: Profunctor RE where
   dimap f g r = g <$> contramapRe f r

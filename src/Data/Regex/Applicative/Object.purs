@@ -1,6 +1,6 @@
 --------------------------------------------------------------------
 -- |
--- Module  : Text.Regex.Applicative.Object
+-- Module  : Data.Regex.Applicative.Object
 -- Copyright : (c) Roman Cheplyaka
 -- License   : MIT
 --
@@ -28,14 +28,14 @@ import Data.Maybe
 
 import Control.Applicative (pure, (<$>), (<*>))
 import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
-import Control.Monad.State (State, evalState, get, put)
+import Control.Monad.State (State, evalState, get, modify)
 import Data.Foldable (foldl)
-import Data.Lazy (force)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
+import Data.Newtype (over)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (RE, Thread(Accept, Thread), ThreadId(ThreadId), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, elimRE)
-import Prelude (bind, discard, flip, ($), (+), (<<<))
+import Data.Regex.Applicative.Types (RE, Thread(..), ThreadId(..), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, elimRE)
+import Prelude (discard, flip, ($), (+), (<<<))
 
 -- | The state of the engine is represented as a \"regex object\" of type
 -- | @'ReObject' s r@, where @s@ is the type of symbols and @r@ is the
@@ -95,10 +95,8 @@ step s (ReObject sq) =
 -- | Feed a symbol into a non-result thread. It is an error to call 'stepThread'
 -- | on a result thread.
 stepThread :: forall c r. c -> Thread c r -> List (Thread c r)
-stepThread s t =
-  case t of
-    Thread { threadId_: _, _threadCont: c } -> c s
-    Accept _ -> unsafeThrow "stepThread on a result"
+stepThread s (Thread { threadId_: _, _threadCont: c }) = c s
+stepThread s _ = unsafeThrow "stepThread on a result"  -- TODO: unsafeThrow?
 
 -- | Add a thread to an object. The new thread will have lower priority than the
 -- | threads which are already in the object.
@@ -109,7 +107,7 @@ addThread :: forall c r. Thread c r -> ReObject c r -> ReObject c r
 addThread t (ReObject q) =
   ReObject $ case t of
               Accept _ -> SQ.insert t q
-              Thread { threadId_: ThreadId i } -> SQ.insertUnique (force i) t q
+              Thread { threadId_: ThreadId i } -> SQ.insertUnique i t q
 
 -- | Compile a regular expression into a regular expression object
 compile :: forall c r. RE c r -> ReObject c r
@@ -118,6 +116,7 @@ compile =
   flip Compile.compile (\x -> Accept x : nil) <<<
   renumber
 
+-- | Give each Symbol node in the tree a fresh ThreadId
 renumber :: forall c a. RE c a -> RE c a
 renumber e =
   let
@@ -132,10 +131,9 @@ renumber e =
         rep: \g f b a -> mkRep g f b <$> go a
     }
   in
-    flip evalState (ThreadId (pure 1)) $ go e
+    flip evalState (ThreadId 0) $ go e
 
 fresh :: State ThreadId ThreadId
 fresh = do
-  t@(ThreadId i) <- get
-  put $ ThreadId ((+) 1 <$> i)
-  pure t
+  modify $ over ThreadId $ (+) 1
+  get
