@@ -12,8 +12,6 @@ module Data.Regex.Applicative.Types (
   elimRE
 ) where
 
-import Data.Maybe
-
 import Control.Alt (class Alt, (<$>), (<|>))
 import Control.Alternative (class Alternative, (<*>))
 import Control.Apply (lift2)
@@ -22,6 +20,7 @@ import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.Lazy (List)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (<<<), (<>))
@@ -143,13 +142,13 @@ contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
 contramapRe f = go where
   go :: forall a'. RE c a' -> RE t a'
   go = elimRE {
-      eps:             Eps
-      , fail:          Fail
-      , symbol: \i p   -> Symbol i (p <<< f)  -- <- only place input is consumed
-      , alt: \r1 r2    -> go r1 <|> go r2
-      , app: \r1 r2    -> go r1 <*> go r2
+      eps:              Eps
+      , fail:           Fail
+      , symbol: \i p    -> Symbol i (p <<< f)  -- <- only place input is consumed
+      , alt: \r1 r2     -> go r1 <|> go r2
+      , app: \r1 r2     -> go r1 <*> go r2
       , star: \g op z r -> mkStar g op z (go r)
-      , fmap: \f' r    -> f' <$> go r
+      , fmap: \f' r     -> f' <$> go r
     }
 
 instance profunctorRe :: Profunctor RE where
@@ -158,13 +157,13 @@ instance profunctorRe :: Profunctor RE where
 
 -- eliminator for RE
 type FoldRE c a r = {
-  eps :: a -> r,
-  symbol :: ThreadId -> (c -> Maybe a) -> r,
-  alt :: RE c a -> RE c a -> r,
-  app :: forall b. RE c (b -> a) -> RE c b -> r,
-  fmap :: forall b. (b -> a) -> RE c b -> r,
-  fail :: r,
-  star :: forall b. Greediness -> (a -> b -> a) -> a -> RE c b -> r
+  eps :: a -> r
+  , fail :: r
+  , symbol :: ThreadId -> (c -> Maybe a) -> r
+  , alt :: RE c a -> RE c a -> r
+  , app :: forall b. RE c (b -> a) -> RE c b -> r
+  , star :: forall b. Greediness -> (a -> b -> a) -> a -> RE c b -> r
+  , fmap :: forall b. (b -> a) -> RE c b -> r
 }
 
 elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
@@ -174,8 +173,8 @@ elimRE elim re = case re of
     Symbol t p -> elim.symbol t p
     Alt a b -> elim.alt a b
     App x -> runExists (\(Apped ff b) -> elim.app ff b) x
-    Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
     Star g x -> runExists (\(Starred op z re) -> elim.star g op z re) x
+    Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
 
 
 instance functorRe :: Functor (RE c) where

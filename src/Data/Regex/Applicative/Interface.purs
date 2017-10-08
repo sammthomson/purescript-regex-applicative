@@ -1,17 +1,16 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative (apply, (<|>))
+import Control.Alternative ((<|>))
 import Control.Apply (lift2)
-import Data.Bifunctor (bimap)
 import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Profunctor.Strong (first, second, (***))
+import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(NonGreedy, Greedy), RE(..), Thread, ThreadId(ThreadId), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
-import Data.Tuple (Tuple(..), swap)
-import Prelude (class Eq, class Semigroup, Ordering(GT), compare, flip, id, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
+import Data.Tuple (Tuple(Tuple))
+import Prelude (class Eq, Ordering(GT), compare, flip, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
 -- | `(v)*`. Matches `v` 0 or more times.
@@ -69,16 +68,12 @@ withMatched = go where
   go = elimRE {
     eps: \a -> Tuple nil <$> Eps a
     , fail: Fail
-    , symbol: \i p -> Symbol i (\c -> (Tuple (c : nil)) <$> p c)
+    , symbol: \i p -> Symbol i (\c -> Tuple (c : nil) <$> p c)
     , alt: \a b -> withMatched a <|> withMatched b
-    , app: \a b -> (<*>) <$> withMatched a
-                            <*> withMatched b
+    , app: \a b -> lift2 (<*>) (withMatched a) (withMatched b)
     , fmap: \f x -> second f <$> withMatched x
     , star: \g op z x ->
-              mkStar g
-                    (lift2 op)
-                    (Tuple nil z)
-                    (withMatched x)
+              mkStar g (lift2 op) (Tuple nil z) (withMatched x)
   }
 
 -- | @s =~ a = match a s@
@@ -103,10 +98,7 @@ infixl 2 matchFlipped as =~
 -- |    -- Nothing
 -- | ```
 match :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
-match re =
-  let
-    obj = compile re
-  in
+match re = let obj = compile re in
     \s -> head $ results $ foldl (flip step) obj s
 
 -- | Find a string prefix which is matched by the regular expression.
