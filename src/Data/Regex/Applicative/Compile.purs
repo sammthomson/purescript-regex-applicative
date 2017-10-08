@@ -6,10 +6,10 @@ import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.State (State, evalState, modify, runState)
 import Data.List.Lazy (List, concatMap, nil, (:))
 import Data.Map as M
-import Data.Maybe (Maybe(..), fromMaybe', isJust)
+import Data.Maybe (fromMaybe', isJust, maybe)
 import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, elimRE)
 import Data.Tuple (Tuple(..))
-import Prelude (class Functor, class Semigroup, const, discard, flip, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
+import Prelude (class Functor, class Semigroup, const, discard, flip, id, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
 
 
 compile :: forall s a r.
@@ -18,6 +18,8 @@ compile :: forall s a r.
            List (Thread s r)
 compile e k = compile2 e (SingleCont k)
 
+
+-- continuation
 data Cont a =
   SingleCont a
   | EmptyNonEmpty a a
@@ -34,67 +36,56 @@ nonEmptyCont :: forall a. Cont a -> a
 nonEmptyCont (SingleCont a) = a
 nonEmptyCont (EmptyNonEmpty _ a) = a
 
-
-type ContToList s r a =
-  Cont (a -> List (Thread s r)) ->
-  List (Thread s r)
-
 -- The whole point of this module is this function, compile2.
 --
 -- compile2 function takes two continuations: one when the match is empty and
 -- one when the match is non-empty. See the "Rep" case for the reason.
 compile2 :: forall s a r.
             RE s a ->
-            ContToList s r a
+            Cont (a -> List (Thread s r)) ->
+            List (Thread s r)
 compile2 = elimRE {
-    eps: \a k -> emptyCont k a,
-    symbol: \i p k ->
-      let
-        t k' = mkThread i $ \s ->
-          case p s of
-            Just r -> k' r
-            Nothing -> nil
-      in
-        (t $ nonEmptyCont k) : nil,
-    app: \n1 n2 ->
-      let
-        a1 = compile2 n1
-        a2 = compile2 n2
-      in
-        \k -> case k of
-          SingleCont k' ->
-            a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
-          EmptyNonEmpty ke kn ->
-            a1 $ EmptyNonEmpty
-              -- empty
-              (\a1_value ->
-                a2 $ EmptyNonEmpty (ke <<< a1_value) (kn <<< a1_value))
-              -- non-empty
-              (\a1_value ->
-                a2 $ EmptyNonEmpty (kn <<< a1_value) (kn <<< a1_value)),
-    alt: \n1 n2 ->
-      let
-        a1 = compile2 n1
-        a2 = compile2 n2
-      in \k -> a1 k <> a2 k,
-    fail: const nil,
-    fmap: \f n -> let a = compile2 n in \k -> a $ map ((>>>) f) k,
-    -- This is actually the point where we use the difference between
-    -- continuations. For the inner RE the empty continuation is a
-    -- "failing" one in order to avoid non-termination.
-    star: \g f b n ->
-      let
-        a = compile2 n
-        threads b' k =
-          combine
-            g
-            (a $
-              EmptyNonEmpty
-                (\_ -> nil)
-                (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
-            (emptyCont k b')
-      in threads b
-  }
+  eps: \a k -> emptyCont k a,
+  symbol: \i p k ->
+    (mkThread i (p >>> maybe nil (nonEmptyCont k))) : nil,
+  app: \n1 n2 ->
+    let
+      a1 = compile2 n1
+      a2 = compile2 n2
+    in
+      \k -> case k of
+        SingleCont k' ->
+          a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
+        EmptyNonEmpty ke kn ->
+          a1 $ EmptyNonEmpty
+            -- empty
+            (\a1_value ->
+              a2 $ EmptyNonEmpty (ke <<< a1_value) (kn <<< a1_value))
+            -- non-empty
+            (\a1_value ->
+              a2 $ EmptyNonEmpty (kn <<< a1_value) (kn <<< a1_value)),
+  alt: \n1 n2 ->
+    let
+      a1 = compile2 n1
+      a2 = compile2 n2
+    in \k -> a1 k <> a2 k,
+  fail: const nil,
+  fmap: \f n -> let a = compile2 n in \k -> a $ map ((>>>) f) k,
+  -- This is actually the point where we use the difference between
+  -- continuations. For the inner RE the empty continuation is a
+  -- "failing" one in order to avoid non-termination.
+  star: \g f b n ->
+    let
+      a = compile2 n
+      threads b' k =
+        combine g (<>)
+          (a $
+            EmptyNonEmpty
+              (\_ -> nil)
+              (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
+          (emptyCont k b')
+    in threads b
+}
 
 data FSMState
   = SAccept
@@ -123,7 +114,7 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
     , star: \g _ _ n ->
       let
         entries = findEntries n
-        cont = combine g entries k
+        cont = combine g (<>) entries k
       in
         -- return value of 'go' is ignored -- it should be a subset of
         -- 'cont'
@@ -157,6 +148,6 @@ compile2_ e' = case mkNFA e' of
       \k -> concatMap (mkThread' (emptyCont k) (nonEmptyCont k)) entries
 
 
-combine :: forall a. Semigroup a => Greediness -> a -> a -> a
-combine Greedy = (<>)
-combine NonGreedy = flip (<>)
+combine :: forall a. Semigroup a => Greediness -> (a -> a -> a) -> a -> a -> a
+combine Greedy = id
+combine NonGreedy = flip

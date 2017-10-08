@@ -11,7 +11,7 @@ import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
 import Data.Unfoldable (class Unfoldable)
-import Prelude (class Eq, Ordering(GT), compare, flip, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
+import Prelude (class Eq, Ordering(GT), compare, flip, map, not, ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
 star :: forall c a. Greediness -> RE c a -> RE c (List a)

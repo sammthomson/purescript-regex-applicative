@@ -29,7 +29,7 @@ import Prelude (class Applicative, class Apply, class Eq, class Functor, class O
 newtype ThreadId = ThreadId Int
 derive instance newtypeThreadId :: Newtype ThreadId _
 
--- | A thread either is a result or corresponds to a symbol in the regular
+-- | A thread is either a result, or corresponds to a symbol in the regular
 -- | expression, which is expected by that thread.
 data Thread c r =
   Thread
@@ -93,13 +93,13 @@ data RE c a =
   | Symbol ThreadId (c -> Maybe a)
   | Alt (RE c a) (RE c a)
   | App (Exists (Apped c a))
-  | Star Greediness (Exists (Starred c a))
+  | Star (Exists (Starred c a))
   | Fmap (Exists (Mapped c a))
 
 -- we don't actually care about the intermediate type `b`
-data Mapped c a b = Mapped (b -> a) (RE c b)
 data Apped c a b = Apped (RE c (b -> a)) (RE c b)
-data Starred c a b = Starred (a -> b -> a) a (RE c b)
+data Starred c a b = Starred Greediness (a -> b -> a) a (RE c b)
+data Mapped c a b = Mapped (b -> a) (RE c b)
 
 
 instance showRE :: Show (RE c a) where
@@ -135,7 +135,7 @@ mkStar :: forall c a b.
                            -- for the folding function
           -> RE c b
           -> RE c a
-mkStar g op z r = Star g $ mkExists $ Starred op z r
+mkStar g op z r = Star $ mkExists $ Starred g op z r
 
 -- | 'RE' is a profunctor. This is its contravariant map.
 contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
@@ -168,13 +168,13 @@ type FoldRE c a r = {
 
 elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
 elimRE elim re = case re of
-    Eps a -> elim.eps a
-    Fail -> elim.fail
-    Symbol t p -> elim.symbol t p
-    Alt a b -> elim.alt a b
-    App x -> runExists (\(Apped ff b) -> elim.app ff b) x
-    Star g x -> runExists (\(Starred op z re) -> elim.star g op z re) x
-    Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
+  Eps a -> elim.eps a
+  Fail -> elim.fail
+  Symbol t p -> elim.symbol t p
+  Alt a b -> elim.alt a b
+  App x -> runExists (\(Apped ff b) -> elim.app ff b) x
+  Star x -> runExists (\(Starred g op z re) -> elim.star g op z re) x
+  Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
 
 
 instance functorRe :: Functor (RE c) where
