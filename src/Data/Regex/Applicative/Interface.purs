@@ -6,16 +6,34 @@ import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(NonGreedy, Greedy), RE(..), Thread, ThreadId(ThreadId), elimRE, mkStar)
+import Data.Regex.Applicative.Types (Greediness(..), RE(..), Thread, ThreadId(ThreadId), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
 import Prelude (class Eq, Ordering(GT), compare, flip, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
+star :: forall c a. Greediness -> RE c a -> RE c (List a)
+star g a = reverse <$> mkStar g (flip (:)) nil a
+
 -- | `(v)*`. Matches `v` 0 or more times.
 many :: forall c a. RE c a -> RE c (List a)
-many v = reverse <$> mkStar Greedy (flip (:)) nil v
+many = star Greedy
+
+-- | Match zero or more instances of the given expression, but as
+-- | few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
+-- | is 'many'.
+-- |
+-- | Examples:
+-- |
+-- | ```
+-- |     findFirstPrefix (few anySym  <* "b") "ababab"
+-- |     -- Just ("a","abab")
+-- |     findFirstPrefix (many anySym  <* "b") "ababab"
+-- |     -- Just ("ababa","")
+-- | ```
+few :: forall c a. RE c a -> RE c (List a)
+few = star NonGreedy
 
 -- | `(v)+`.  Matches `v` 0 or more times.
 some :: forall c a. RE c a -> RE c (List a)
@@ -45,21 +63,6 @@ arr = traverse sym
 
 str :: String -> RE Char (List Char)
 str s = fromFoldable <$> (arr $ toCharArray s)
-
--- | Match zero or more instances of the given expression, but as
--- | few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
--- | is 'many'.
--- |
--- | Examples:
--- |
--- | ```
--- |     findFirstPrefix (few anySym  <* "b") "ababab"
--- |     -- Just ("a","abab")
--- |     findFirstPrefix (many anySym  <* "b") "ababab"
--- |     -- Just ("ababa","")
--- | ```
-few :: forall c a. RE c a -> RE c (List a)
-few a = reverse <$> mkStar NonGreedy (flip cons) nil a
 
 
 -- | Return matched symbols as part of the return value
