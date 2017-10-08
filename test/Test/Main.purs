@@ -133,7 +133,7 @@ prop_withMatched =
   in
     \s -> case map unAB s =~ re of
       Nothing -> Success
-      Just (Tuple x y) -> join x ==? y
+      Just (Tuple x y) -> x ==? join y
 
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,

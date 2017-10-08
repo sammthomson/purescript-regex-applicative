@@ -71,12 +71,12 @@ char = P $ \s ->
 
 fromRE :: forall c a. RE c a -> P c a
 fromRE = elimRE {
-  eps: pure,
-  symbol: \_ p -> char >>= \c -> maybe empty pure $ p c,
-  alt: \a1 a2 -> fromRE a1 <|> fromRE a2,
-  app: \a1 a2 -> fromRE a1 <*> fromRE a2,
-  fmap: \f a -> f <$> fromRE a,
-  rep: \g f b a ->
+  eps: pure
+  , symbol: \_ p -> char >>= \c -> maybe empty pure $ p c
+  , alt: \a1 a2 -> fromRE a1 <|> fromRE a2
+  , app: \a1 a2 -> fromRE a1 <*> fromRE a2
+  , fmap: \f a -> f <$> fromRE a
+  , star: \g f b a ->
     let
       am = fromRE a
       rep b' = flip combine (pure b') $ do
@@ -86,8 +86,8 @@ fromRE = elimRE {
         Greedy -> a' <|> b'
         NonGreedy -> b' <|> a'
     in
-      rep b,
-  fail: empty
+      rep b
+  , fail: empty
 }
 
 spyShow :: forall a. DebugWarning => Show a => (Unit -> a) -> a

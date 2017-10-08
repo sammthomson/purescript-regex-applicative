@@ -18,14 +18,8 @@ module Data.Regex.Applicative (
 
 import Data.Regex.Applicative.Types (
   Greediness(..)
-  , RE
-  , mkEps
-  , mkSymbol
-  , mkAlt
-  , mkApp
-  , mkFmap
-  , mkFail
-  , mkRep
+  , RE(..)
+  , mkStar
 )
 import Data.Regex.Applicative.Interface (
   sym

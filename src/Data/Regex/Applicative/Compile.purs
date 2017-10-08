@@ -82,7 +82,7 @@ compile2 = elimRE {
     -- This is actually the point where we use the difference between
     -- continuations. For the inner RE the empty continuation is a
     -- "failing" one in order to avoid non-termination.
-    rep: \g f b n ->
+    star: \g f b n ->
       let
         a = compile2 n
         threads b' k =
@@ -111,17 +111,16 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
         RE c' a' ->
         State (FSMMap c') (List FSMState)
   go k = elimRE {
-    eps: \a -> pure k,  -- FIXME: what to do here?
-    symbol:
+    eps: \a -> pure k  -- FIXME: what to do here?
+    , fail: pure nil
+    , symbol:
       \i@(ThreadId n) p ->
         do
           modify $ M.insert n $ Tuple (isJust <<< p) k
-          pure (STransition i : nil),
-    app: \n1 n2 -> (go k n2) >>= (flip go n1),
-    alt: \n1 n2 -> (<>) <$> go k n1 <*> go k n2,
-    fail: pure nil,
-    fmap: \_ n -> go k n,
-    rep: \g _ _ n ->
+          pure (STransition i : nil)
+    , app: \n1 n2 -> (go k n2) >>= (flip go n1)
+    , alt: \n1 n2 -> (<>) <$> go k n1 <*> go k n2
+    , star: \g _ _ n ->
       let
         entries = findEntries n
         cont = combine g entries k
@@ -129,6 +128,7 @@ mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
         -- return value of 'go' is ignored -- it should be a subset of
         -- 'cont'
         go cont n >>= \_ -> pure cont
+    , fmap: \_ n -> go k n
   }
 
   -- A simple (although a bit inefficient) way to find all entry points is

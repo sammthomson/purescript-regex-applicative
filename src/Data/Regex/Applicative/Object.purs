@@ -34,7 +34,7 @@ import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
 import Data.Newtype (over)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (RE, Thread(..), ThreadId(..), mkAlt, mkApp, mkEps, mkFail, mkFmap, mkRep, mkSymbol, elimRE)
+import Data.Regex.Applicative.Types (RE(Alt, Symbol, Fail, Eps), Thread(Accept, Thread), ThreadId(ThreadId), elimRE, mkStar)
 import Prelude (discard, flip, ($), (+), (<<<))
 
 -- | The state of the engine is represented as a \"regex object\" of type
@@ -122,13 +122,13 @@ renumber e =
   let
     go :: forall t b. RE t b -> State ThreadId (RE t b)
     go = elimRE {
-        eps: \a -> pure $ mkEps a,
-        symbol: \_ p -> mkSymbol <$> fresh <*> pure p,
-        alt: \a1 a2 -> mkAlt <$> go a1 <*> go a2,
-        app: \a1 a2 -> mkApp <$> go a1 <*> go a2,
-        fail: pure mkFail,
-        fmap: \f a -> mkFmap f <$> go a,
-        rep: \g f b a -> mkRep g f b <$> go a
+        eps: \a -> pure $ Eps a
+        , fail: pure Fail
+        , symbol: \_ p -> Symbol <$> fresh <*> pure p
+        , alt: \a1 a2 -> Alt <$> go a1 <*> go a2
+        , app: \a1 a2 -> (<*>) <$> go a1 <*> go a2
+        , star: \g f b a -> mkStar g f b <$> go a
+        , fmap: \f a -> (<$>) f <$> go a
     }
   in
     flip evalState (ThreadId 0) $ go e

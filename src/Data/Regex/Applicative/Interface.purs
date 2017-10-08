@@ -1,11 +1,13 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative ((<|>))
+import Control.Alternative (apply, (<|>))
+import Control.Apply (lift2)
+import Data.Bifunctor (bimap)
 import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Profunctor.Strong (second, (***))
+import Data.Profunctor.Strong (first, second, (***))
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), elimRE, mkEps, mkFail, mkRep, mkSymbol)
+import Data.Regex.Applicative.Types (Greediness(NonGreedy, Greedy), RE(..), Thread, ThreadId(ThreadId), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(..), swap)
@@ -14,7 +16,7 @@ import Prelude (class Eq, class Semigroup, Ordering(GT), compare, flip, id, map,
 
 -- | `(v)*`. Matches `v` 0 or more times.
 many :: forall c a. RE c a -> RE c (List a)
-many v = reverse <$> mkRep Greedy (flip (:)) nil v
+many v = reverse <$> mkStar Greedy (flip (:)) nil v
 
 -- | `(v)+`.  Matches `v` 0 or more times.
 some :: forall c a. RE c a -> RE c (List a)
@@ -28,7 +30,7 @@ psym p = msym (\c -> if p c then Just c else Nothing)
 -- | original symbol
 -- 0 is a place-holder. will be renumbered during compilation
 msym :: forall c a. (c -> Maybe a) -> RE c a
-msym p = mkSymbol (ThreadId 0) p
+msym p = Symbol (ThreadId 0) p
 
 -- | Match and return the given symbol
 sym :: forall c. Eq c => c -> RE c c
@@ -58,27 +60,25 @@ str s = fromFoldable <$> (arr $ toCharArray s)
 -- |     -- Just ("ababa","")
 -- | ```
 few :: forall c a. RE c a -> RE c (List a)
-few a = reverse <$> mkRep NonGreedy (flip cons) nil a
+few a = reverse <$> mkStar NonGreedy (flip cons) nil a
 
 
 -- | Return matched symbols as part of the return value
-withMatched :: forall c a. RE c a -> RE c (Tuple a (List c))
+withMatched :: forall c a. RE c a -> RE c (Tuple (List c) a)
 withMatched = go where
-  applyTuple :: forall x y z. Semigroup z => Tuple (x -> y) z -> Tuple x z -> Tuple y z
-  applyTuple f x = swap $ swap f <*> swap x
   go = elimRE {
-    eps: \a -> flip Tuple nil <$> mkEps a,
-    symbol: \t p -> mkSymbol t (\s -> (flip Tuple (s : nil)) <$> p s),
-    alt: \a b -> withMatched a <|> withMatched b,
-    app: \a b -> applyTuple <$> withMatched a
-                                <*> withMatched b,
-    fmap: \f x -> (f *** id) <$> withMatched x,
-    fail: mkFail,
-    rep: \gr f a0 x ->
-      mkRep gr
-          (\(Tuple a s) (Tuple x' t) -> (Tuple (f a x') (s <> t)))
-          (Tuple a0 nil)
-          (withMatched x)
+    eps: \a -> Tuple nil <$> Eps a
+    , fail: Fail
+    , symbol: \i p -> Symbol i (\c -> (Tuple (c : nil)) <$> p c)
+    , alt: \a b -> withMatched a <|> withMatched b
+    , app: \a b -> (<*>) <$> withMatched a
+                            <*> withMatched b
+    , fmap: \f x -> second f <$> withMatched x
+    , star: \g op z x ->
+              mkStar g
+                    (lift2 op)
+                    (Tuple nil z)
+                    (withMatched x)
   }
 
 -- | @s =~ a = match a s@
@@ -217,7 +217,7 @@ findFirstInfix re s =
 
 -- | Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. RE c (Tuple Int (List c))
-prefixCounter = second reverse <$> mkRep NonGreedy f (Tuple 0 nil) anySym
+prefixCounter = second reverse <$> mkStar NonGreedy f (Tuple 0 nil) anySym
   where
   f (Tuple i prefix) s = (Tuple (i + 1)) $ cons s prefix
 
