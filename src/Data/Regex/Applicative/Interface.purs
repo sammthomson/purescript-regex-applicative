@@ -2,7 +2,7 @@ module Data.Regex.Applicative.Interface where
 
 import Control.Alternative ((<|>))
 import Control.Apply (lift2)
-import Data.List.Lazy (List, cons, foldl, fromFoldable, head, init, nil, reverse, uncons, (:))
+import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
@@ -10,6 +10,7 @@ import Data.Regex.Applicative.Types (Greediness(..), RE(..), Thread, ThreadId(Th
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
+import Data.Unfoldable (class Unfoldable)
 import Prelude (class Eq, Ordering(GT), compare, flip, map, not, (#), ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
@@ -211,9 +212,9 @@ findFirstInfix re s =
 
 -- | Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. RE c (Tuple Int (List c))
-prefixCounter = second reverse <$> mkStar NonGreedy f (Tuple 0 nil) anySym
-  where
-  f (Tuple i prefix) s = (Tuple (i + 1)) $ cons s prefix
+prefixCounter = second reverse <$> reversedPrefix where
+  reversedPrefix = mkStar NonGreedy op (Tuple 0 nil) anySym
+  op (Tuple i acc) c = Tuple (i + 1) $ c : acc
 
 data InfixMatchingState c a = GotResult
   { prefixLen  :: Int
@@ -225,9 +226,9 @@ data InfixMatchingState c a = GotResult
 
 -- | a `preferOver` b chooses one of a and b, giving preference to a
 preferOver :: forall c a.
-  InfixMatchingState c a
-  -> InfixMatchingState c a
-  -> InfixMatchingState c a
+              InfixMatchingState c a
+              -> InfixMatchingState c a
+              -> InfixMatchingState c a
 preferOver NoResult b = b
 preferOver b NoResult = b
 preferOver a@(GotResult ar) b@(GotResult br) =
@@ -236,9 +237,9 @@ preferOver a@(GotResult ar) b@(GotResult br) =
     _  -> a -- otherwise, prefer a
 
 mkInfixMatchingState :: forall c a.
-  List c -- rest of input
-  -> Thread c (Tuple (Tuple Int (List c)) a)
-  -> InfixMatchingState c a
+                        List c -- rest of input
+                        -> Thread c (Tuple (Tuple Int (List c)) a)
+                        -> InfixMatchingState c a
 mkInfixMatchingState rest thread =
   case getResult thread of
     Just (Tuple (Tuple pLen pStr) res) ->
@@ -268,10 +269,10 @@ gotResult _ = false
 findExtremalInfix :: forall c a t. Foldable t =>
      -- function to combine a later result (first arg) to an earlier one (second
      -- arg)
-     (InfixMatchingState c a -> InfixMatchingState c a -> InfixMatchingState c a)
-  -> RE c a
-  -> t c
-  -> Maybe (Tuple (List c) (Tuple a (List c)))
+    (InfixMatchingState c a -> InfixMatchingState c a -> InfixMatchingState c a)
+    -> RE c a
+    -> t c
+    -> Maybe (Tuple (List c) (Tuple a (List c)))
 findExtremalInfix newOrOld re s =
   case go (compile $ Tuple <$> prefixCounter <*> re) (fromFoldable s) NoResult of
     NoResult -> Nothing
@@ -316,16 +317,16 @@ findShortestInfix r = findExtremalInfix (flip preferOver) r <<< fromFoldable
 -- |
 -- | ```
 -- |    import Prelude
--- |    import Data.Array as A
 -- |    import Data.Regex.Applicative
--- |    import Data.List.Lazy hiding (some)
 -- |    import Data.String (fromCharArray, toCharArray)
 -- |
--- |    fromCharArray $ A.fromFoldable $ replace (('!' : nil) <$ sym 'f' <* some (sym 'o')) $ fromFoldable $ toCharArray "quuxfoofooooofoobarfobar"
+-- |    fromCharArray $ replace (['!'] <$ sym 'f' <* some (sym 'o')) $ toCharArray "quuxfoofooooofoobarfobar"
 -- |    "quux!!!bar!bar"
 -- | ```
-replace :: forall c. RE c (List c) -> List c -> List c
-replace r = ((#) nil) <<< go
-  where go ys = case findLongestInfix r ys of
-                  Nothing -> (<>) ys
-                  Just (Tuple before (Tuple m rest)) -> ((<>) before) <<< ((<>) m) <<< go rest
+replace :: forall t c. Foldable t => Unfoldable t =>
+           RE c (t c) -> t c -> t c
+replace r xs = toUnfoldable $ go (fromFoldable xs) nil where
+  go ys = case findLongestInfix r ys of
+    Nothing -> \zs -> ys <> zs
+    Just (Tuple before (Tuple m rest)) -> \zs ->
+      before <> (fromFoldable m) <> (go rest zs)
