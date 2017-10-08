@@ -80,17 +80,11 @@ results obj =
   mapMaybe getResult $ threads obj
 
 -- | Feed a symbol into a regex object
-step :: forall c r. c -> ReObject c r -> ReObject c r
-step s (ReObject sq) =
-  let
-    accum q t =
-      case t of
-        Accept _ -> q
-        Thread { _threadCont: c } ->
-          foldl (\q' x -> addThread x q') q $ c s
-    newQueue = foldl accum emptyObject sq
-  in
-    newQueue
+step :: forall c r. ReObject c r -> c -> ReObject c r
+step (ReObject sq) c = foldl op emptyObject sq where
+  op q (Thread { _threadCont: cont }) = foldl (flip addThread) q $ cont c
+  op q (Accept _) = q
+
 
 -- | Feed a symbol into a non-result thread. It is an error to call 'stepThread'
 -- | on a result thread.

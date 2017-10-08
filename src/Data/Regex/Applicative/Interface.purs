@@ -72,8 +72,7 @@ withMatched = go where
     , alt: \a b -> withMatched a <|> withMatched b
     , app: \a b -> lift2 (<*>) (withMatched a) (withMatched b)
     , fmap: \f x -> second f <$> withMatched x
-    , star: \g op z x ->
-              mkStar g (lift2 op) (Tuple nil z) (withMatched x)
+    , star: \g op z x -> mkStar g (lift2 op) (Tuple nil z) (withMatched x)
   }
 
 -- | @s =~ a = match a s@
@@ -99,7 +98,7 @@ infixl 2 matchFlipped as =~
 -- | ```
 match :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
 match re = let obj = compile re in
-    \s -> head $ results $ foldl (flip step) obj s
+    \s -> head $ results $ foldl step obj s
 
 -- | Find a string prefix which is matched by the regular expression.
 -- |
@@ -146,7 +145,7 @@ findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
           case uncons s' of
             _ | failed obj' -> res
             Nothing -> res
-            Just { head, tail } -> go (step head obj') tail res
+            Just { head, tail } -> go (step obj' head) tail res
 
 -- | Find the longest string prefix which is matched by the regular expression.
 -- |
@@ -182,7 +181,7 @@ findLongestPrefix re s = go (compile re) (fromFoldable s) Nothing
       case uncons s' of
         _ | failed obj -> res
         Nothing -> res
-        Just { head, tail } -> go (step head obj) tail res
+        Just { head, tail } -> go (step obj head) tail res
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
 findShortestPrefix :: forall c a t. Foldable t =>
@@ -196,7 +195,7 @@ findShortestPrefix re s = go (compile re) (fromFoldable s)
       _ ->
         case uncons s' of
           Nothing -> Nothing
-          Just { head, tail } -> go (step head obj) tail
+          Just { head, tail } -> go (step obj head) tail
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- | Otherwise behaves like 'findFirstPrefix'. Returns the result together with
@@ -293,7 +292,7 @@ findExtremalInfix newOrOld re s =
         case uncons s' of
           Nothing -> res
           _ | failed obj -> res
-          Just { head, tail } -> go (step head obj') tail res
+          Just { head, tail } -> go (step obj' head) tail res
 
 
 -- | Find the leftmost substring that is matched by the regular expression.
