@@ -1,127 +1,89 @@
 module Data.Regex.Applicative.Compile (
-  compile
+  Thread(..)
+  , mkThread
+  , compile
 ) where
 
-import Control.Monad.State (State, evalState, modify, runState)
+import Data.Exists (runExists)
 import Data.List.Lazy (List, nil, (:))
-import Data.Map as M
-import Data.Maybe (isJust, maybe)
-import Data.Newtype (class Newtype, over)
-import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, elimRE)
-import Data.Tuple (Tuple(..), uncurry)
-import Prelude (class Functor, const, discard, flip, id, map, pure, ($), (*>), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
+import Data.Maybe (maybe)
+import Data.Regex.Applicative.Types (Apped(..), Greediness(..), Mapped(..), RE(..), Starred(..), ThreadId)
+import Prelude (class Functor, const, flip, map, ($), (<<<), (<>), (>>>))
 
 
-compile :: forall s a r.
-           RE s a ->
-           (a -> List (Thread s r)) ->
-           List (Thread s r)
-compile e k = compile2 e (SingleCont k)
+-- | A thread is either a result, or corresponds to a Symbol in the regular
+-- | expression which is expected by that thread.
+data Thread c r =
+  Thread
+    { threadId_ :: ThreadId
+    , _threadCont :: c -> List (Thread c r)
+    }
+  | Accept r
 
--- continuation
-data Cont a =
+mkThread :: forall c r. ThreadId -> (c -> List (Thread c r)) -> Thread c r
+mkThread i c = Thread { threadId_: i, _threadCont: c }
+
+-- | Two continuations: one for when the match is empty, and
+-- | one for when the match is non-empty.
+-- | This is needed to guarantee termination in the "Star".
+data OneOrTwoConts a =
   SingleCont a
   | EmptyNonEmpty a a
 
-instance functorCont :: Functor Cont where
+instance functorCont :: Functor OneOrTwoConts where
   map f (SingleCont a) = SingleCont (f a)
   map f (EmptyNonEmpty a b) = EmptyNonEmpty (f a) (f b)
 
-emptyCont :: forall a. Cont a -> a
+emptyCont :: forall a. OneOrTwoConts a -> a
 emptyCont (SingleCont a) = a
 emptyCont (EmptyNonEmpty a _) = a
 
-nonEmptyCont :: forall a. Cont a -> a
+nonEmptyCont :: forall a. OneOrTwoConts a -> a
 nonEmptyCont (SingleCont a) = a
 nonEmptyCont (EmptyNonEmpty _ a) = a
 
--- The whole point of this module is this function, compile2.
---
--- compile2 function takes two continuations: one when the match is empty and
--- one when the match is non-empty. See the "Rep" case for the reason.
-compile2 :: forall s a r.
-            RE s a ->
-            Cont (a -> List (Thread s r)) ->
-            List (Thread s r)
-compile2 = elimRE {
-  eps: \a k -> emptyCont k a,
-  symbol: \i p k ->
-    (mkThread i (p >>> maybe nil (nonEmptyCont k))) : nil,
-  app: \n1 n2 ->
+compile :: forall c a r.
+           RE c a ->
+           (a -> List (Thread c r)) ->
+           List (Thread c r)
+compile e k = go e (SingleCont k) where
+  go :: forall a'. RE c a' ->
+                   OneOrTwoConts (a' -> List (Thread c r)) ->
+                   List (Thread c r)
+  go (Eps a) = flip emptyCont a
+  go (Fail) = const nil
+  go (Symbol i p) = \k ->
+    (mkThread i (p >>> maybe nil (nonEmptyCont k))) : nil
+  go (Alt n1 n2) =
     let
-      a1 = compile2 n1
-      a2 = compile2 n2
-      f (SingleCont k) =
-        SingleCont $ \aVal -> a2 $ SingleCont $ k <<< aVal
-      f (EmptyNonEmpty ke kn) =
+      a1 = go n1
+      a2 = go n2
+    in \k -> a1 k <> a2 k
+  go (App r) = runExists (\(Apped n1 n2) ->
+    let
+      a1 = go n1
+      a2 = go n2
+      f2 (SingleCont k) = SingleCont $ \aVal -> a2 $ SingleCont $ k <<< aVal
+      f2 (EmptyNonEmpty ke kn) =
         let
           ene k1 k2 aVal = a2 $ EmptyNonEmpty (k1 <<< aVal) (k2 <<< aVal)
         in
           EmptyNonEmpty (ene ke kn) (ene kn kn)
-    in a1 <<< f,
-  alt: \n1 n2 ->
+    in a1 <<< f2) r
+  go (Star r) = runExists (\(Starred g f b n) ->
     let
-      a1 = compile2 n1
-      a2 = compile2 n2
-    in \k -> a1 k <> a2 k,
-  fail: const nil,
-  fmap: \f n ->
-    let a = compile2 n
-    in \k -> a $ map ((>>>) f) k,
-  -- This is the point where we use the difference between
-  -- continuations. For the inner RE the empty continuation is a
-  -- "failing" one in order to avoid non-termination.
-  star: \g f b n ->
-    let
-      a = compile2 n
+      a = go n
+      combine Greedy = (<>)
+      combine NonGreedy = flip (<>)
       threads b' k =
-        combine g (<>)
+        combine g
           (a $
             EmptyNonEmpty
-              (\_ -> nil)
+              (const nil)
               (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
           (emptyCont k b')
-    in threads b
-}
-
-data Fsa c = Fsa (List FsaState) (FsaMap c)
-
-data FsaState = SAccept | STransition ThreadId
-
-newtype FsaMap c = FsaMap (M.Map Int (Tuple (c -> Boolean) (List FsaState)))
-derive instance newtypeFsaMap :: Newtype (FsaMap c) _
-emptyFsaMap :: forall c. FsaMap c
-emptyFsaMap = FsaMap M.empty
-
-mkFsa :: forall c a. RE c a -> Fsa c
-mkFsa e = uncurry Fsa result where
-  stateT = go (SAccept : nil) e
-  result = runState stateT emptyFsaMap
-  go :: forall c' a'.
-        List FsaState ->
-        RE c' a' ->
-        State (FsaMap c') (List FsaState)
-  go k = elimRE {
-    eps: \a -> pure k  -- FIXME: what to do here?
-    , fail: pure nil
-    , symbol: \i@(ThreadId n) p -> do
-        modify $ over FsaMap $ M.insert n $ Tuple (isJust <<< p) k
-        pure ((STransition i) : nil)
-    , app: \n1 n2 -> (go k n2) >>= (flip go n1)
-    , alt: \n1 n2 -> (<>) <$> go k n1 <*> go k n2
-    , star: \g _ _ n ->
-      let cont = combine g (<>) (findEntries n) k
-      -- return value of 'go' is ignored -- it should be a subset of 'cont's
-      in go cont n *> pure cont
-    , fmap: \_ n -> go k n
-  }
-
-  -- A simple (although a bit inefficient) way to find all entry points is
-  -- just to use 'go'
-  findEntries :: forall s' a'. RE s' a' -> List FsaState
-  findEntries e' = evalState (go nil e') emptyFsaMap
-
-
-combine :: forall a. Greediness -> (a -> a -> a) -> a -> a -> a
-combine Greedy = id
-combine NonGreedy = flip
+    in threads b) r
+  go (Fmap r) = runExists (\(Mapped f n) ->
+    let a = go n
+    in \k -> a $ map ((>>>) f) k
+  ) r

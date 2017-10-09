@@ -5,8 +5,9 @@ import Control.Apply (lift2)
 import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
+import Data.Regex.Applicative.Compile (Thread)
 import Data.Regex.Applicative.Object (addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE(..), Thread, ThreadId(ThreadId), elimRE, mkStar)
+import Data.Regex.Applicative.Types (Greediness(..), RE(..), ThreadId(..), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
@@ -36,7 +37,7 @@ many = star Greedy
 few :: forall c a. RE c a -> RE c (List a)
 few = star NonGreedy
 
--- | `(v)+`.  Matches `v` 0 or more times.
+-- | `(v)+`.  Matches `v` 1 or more times.
 some :: forall c a. RE c a -> RE c (List a)
 some v = (:) <$> v <*> many v
 

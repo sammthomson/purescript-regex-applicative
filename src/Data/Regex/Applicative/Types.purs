@@ -1,13 +1,10 @@
 module Data.Regex.Applicative.Types (
   Greediness(..),
   RE(..),
-  Thread(..),
   ThreadId(..),
-  Mapped,
-  Apped,
-  Starred,
-  mkThread,
-  threadId,
+  Mapped(..),
+  Apped(..),
+  Starred(..),
   mkStar,
   elimRE
 ) where
@@ -19,8 +16,7 @@ import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.List.Lazy (List)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
 import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (<<<), (<>))
@@ -28,24 +24,6 @@ import Prelude (class Applicative, class Apply, class Eq, class Functor, class O
 
 newtype ThreadId = ThreadId Int
 derive instance newtypeThreadId :: Newtype ThreadId _
-
--- | A thread is either a result, or corresponds to a symbol in the regular
--- | expression, which is expected by that thread.
-data Thread c r =
-  Thread
-    { threadId_ :: ThreadId
-    , _threadCont :: c -> List (Thread c r)
-    }
-  | Accept r
-
-mkThread :: forall c r. ThreadId -> (c -> List (Thread c r)) -> Thread c r
-mkThread i c = Thread { threadId_: i, _threadCont: c }
-
--- | Returns thread identifier. This will be 'Just' for ordinary threads and
--- | 'Nothing' for results.
-threadId :: forall c r. Thread c r -> Maybe ThreadId
-threadId (Thread { threadId_: i }) = Just i
-threadId _ = Nothing
 
 data Greediness = Greedy | NonGreedy
 
@@ -101,7 +79,6 @@ data Apped c a b = Apped (RE c (b -> a)) (RE c b)
 data Starred c a b = Starred Greediness (a -> b -> a) a (RE c b)
 data Mapped c a b = Mapped (b -> a) (RE c b)
 
-
 instance showRE :: Show (RE c a) where
   show = elimRE {
     eps: \_ -> "Eps a?"
@@ -112,7 +89,6 @@ instance showRE :: Show (RE c a) where
     , star: \g _ a r -> "Star " <> show g <> " op? a? (" <> show r <> ")"
     , fmap: \_ b -> "Fmap f? (" <> show b <> ")"
   }
-
 
 -- | Match zero or more instances of the given expression, which are combined using
 -- | the given folding function.
@@ -150,7 +126,6 @@ elimRE elim re = case re of
   Star x -> runExists (\(Starred g op z re) -> elim.star g op z re) x
   Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
 
-
 instance functorRe :: Functor (RE c) where
   map f x = Fmap $ mkExists $ Mapped f x
 
@@ -173,6 +148,7 @@ instance semigroupRe :: Semigroup a => Semigroup (RE c a) where
 
 instance profunctorRe :: Profunctor RE where
   dimap f g r = g <$> cmap f r where
+    -- contravariant map
     cmap :: forall a b c. (a -> b) -> RE b c -> RE a c
     cmap f = go where
       go :: forall d. RE b d -> RE a d
