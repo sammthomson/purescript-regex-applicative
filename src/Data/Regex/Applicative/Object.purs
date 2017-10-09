@@ -15,7 +15,6 @@ module Data.Regex.Applicative.Object
   , emptyObject
   , threads
   , failed
-  , isResult
   , getResult
   , results
   , step
@@ -27,14 +26,13 @@ module Data.Regex.Applicative.Object
 import Data.Maybe
 
 import Control.Applicative (pure, (<$>), (<*>))
-import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.State (State, evalState, get, modify)
 import Data.Foldable (foldl)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
 import Data.Newtype (over)
 import Data.Regex.Applicative.Compile as Compile
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (RE(Alt, Symbol, Fail, Eps), Thread(Accept, Thread), ThreadId(ThreadId), elimRE, mkStar)
+import Data.Regex.Applicative.Types (RE(Alt, Symbol, Fail, Eps), Thread(..), ThreadId(..), elimRE, mkStar)
 import Prelude (discard, flip, ($), (+), (<<<))
 
 -- | The state of the engine is represented as a \"regex object\" of type
@@ -54,11 +52,6 @@ threads (ReObject sq) = fromFoldable sq
 fromThreads :: forall c r. List (Thread c r) -> ReObject c r
 fromThreads ts = foldl (flip addThread) emptyObject ts
 
--- | Check whether a thread is a result thread
-isResult :: forall c r. Thread c r -> Boolean
-isResult (Accept _) = true
-isResult _ = false
-
 -- | Return the result of a result thread, or 'Nothing' if it's not a result
 -- | thread
 getResult :: forall c r. Thread c r -> Maybe r
@@ -76,21 +69,19 @@ emptyObject = ReObject $ SQ.empty
 
 -- | Extract the result values from all the result threads of an object
 results :: forall c r. ReObject c r -> List r
-results obj =
-  mapMaybe getResult $ threads obj
+results obj = mapMaybe getResult $ threads obj
 
 -- | Feed a symbol into a regex object
 step :: forall c r. ReObject c r -> c -> ReObject c r
 step (ReObject sq) c = foldl op emptyObject sq where
-  op q (Thread { _threadCont: cont }) = foldl (flip addThread) q $ cont c
+  op q (Thread t) = foldl (flip addThread) q $ t._threadCont c
   op q (Accept _) = q
-
 
 -- | Feed a symbol into a non-result thread. It is an error to call 'stepThread'
 -- | on a result thread.
 stepThread :: forall c r. c -> Thread c r -> List (Thread c r)
-stepThread s (Thread { threadId_: _, _threadCont: c }) = c s
-stepThread s _ = unsafeThrow "stepThread on a result"  -- TODO: unsafeThrow?
+stepThread s (Thread t) = t._threadCont s
+stepThread _ _ = nil
 
 -- | Add a thread to an object. The new thread will have lower priority than the
 -- | threads which are already in the object.
@@ -100,8 +91,8 @@ stepThread s _ = unsafeThrow "stepThread on a result"  -- TODO: unsafeThrow?
 addThread :: forall c r. Thread c r -> ReObject c r -> ReObject c r
 addThread t (ReObject q) =
   ReObject $ case t of
-              Accept _ -> SQ.insert t q
-              Thread { threadId_: ThreadId i } -> SQ.insertUnique i t q
+    Accept _ -> SQ.insert t q
+    Thread { threadId_: ThreadId i } -> SQ.insertUnique i t q
 
 -- | Compile a regular expression into a regular expression object
 compile :: forall c r. RE c r -> ReObject c r
@@ -110,24 +101,23 @@ compile =
   flip Compile.compile (\x -> Accept x : nil) <<<
   renumber
 
--- | Give each Symbol node in the tree a fresh ThreadId
+-- | Give each Symbol node in the tree a unique ThreadId
 renumber :: forall c a. RE c a -> RE c a
 renumber e =
   let
+    fresh :: State ThreadId ThreadId
+    fresh = do
+      modify $ over ThreadId $ (+) 1
+      get
     go :: forall t b. RE t b -> State ThreadId (RE t b)
     go = elimRE {
-        eps: \a -> pure $ Eps a
-        , fail: pure Fail
-        , symbol: \_ p -> Symbol <$> fresh <*> pure p
-        , alt: \a1 a2 -> Alt <$> go a1 <*> go a2
-        , app: \a1 a2 -> (<*>) <$> go a1 <*> go a2
-        , star: \g f b a -> mkStar g f b <$> go a
-        , fmap: \f a -> (<$>) f <$> go a
+      eps: \a -> pure $ Eps a
+      , fail: pure Fail
+      , symbol: \_ p -> Symbol <$> fresh <*> pure p
+      , alt: \a1 a2 -> Alt <$> go a1 <*> go a2
+      , app: \a1 a2 -> (<*>) <$> go a1 <*> go a2
+      , star: \g f b a -> mkStar g f b <$> go a
+      , fmap: \f a -> (<$>) f <$> go a
     }
   in
     flip evalState (ThreadId 0) $ go e
-
-fresh :: State ThreadId ThreadId
-fresh = do
-  modify $ over ThreadId $ (+) 1
-  get

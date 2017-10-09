@@ -114,14 +114,6 @@ instance showRE :: Show (RE c a) where
   }
 
 
--- constructors
-
-mkApp :: forall c a b. RE c (b -> a) -> RE c b -> RE c a
-mkApp mf mx = App $ mkExists $ Apped mf mx
-
-mkFmap :: forall c a b. (b -> a) -> RE c b -> RE c a
-mkFmap f x = Fmap $ mkExists $ Mapped f x
-
 -- | Match zero or more instances of the given expression, which are combined using
 -- | the given folding function.
 -- |
@@ -136,24 +128,6 @@ mkStar :: forall c a b.
           -> RE c b
           -> RE c a
 mkStar g op z r = Star $ mkExists $ Starred g op z r
-
--- | 'RE' is a profunctor. This is its contravariant map.
-contramapRe :: forall c t a. (t -> c) -> RE c a -> RE t a
-contramapRe f = go where
-  go :: forall a'. RE c a' -> RE t a'
-  go = elimRE {
-      eps:              Eps
-      , fail:           Fail
-      , symbol: \i p    -> Symbol i (p <<< f)  -- <- only place input is consumed
-      , alt: \r1 r2     -> go r1 <|> go r2
-      , app: \r1 r2     -> go r1 <*> go r2
-      , star: \g op z r -> mkStar g op z (go r)
-      , fmap: \f' r     -> f' <$> go r
-    }
-
-instance profunctorRe :: Profunctor RE where
-  dimap f g r = g <$> contramapRe f r
-
 
 -- eliminator for RE
 type FoldRE c a r = {
@@ -178,10 +152,10 @@ elimRE elim re = case re of
 
 
 instance functorRe :: Functor (RE c) where
-  map = mkFmap
+  map f x = Fmap $ mkExists $ Mapped f x
 
 instance applyRe :: Apply (RE c) where
-  apply = mkApp
+  apply mf mx = App $ mkExists $ Apped mf mx
 
 instance applicativeRe :: Applicative (RE c) where
   pure = Eps
@@ -196,3 +170,18 @@ instance alternativeRe :: Alternative (RE c)
 
 instance semigroupRe :: Semigroup a => Semigroup (RE c a) where
   append = lift2 (<>)
+
+instance profunctorRe :: Profunctor RE where
+  dimap f g r = g <$> cmap f r where
+    cmap :: forall a b c. (a -> b) -> RE b c -> RE a c
+    cmap f = go where
+      go :: forall d. RE b d -> RE a d
+      go = elimRE {
+          eps:              Eps
+          , fail:           Fail
+          , symbol: \i p    -> Symbol i (p <<< f)  -- <- only place input is consumed
+          , alt: \r1 r2     -> go r1 <|> go r2
+          , app: \r1 r2     -> go r1 <*> go r2
+          , star: \g op z r -> mkStar g op z (go r)
+          , fmap: \f' r     -> f' <$> go r
+        }

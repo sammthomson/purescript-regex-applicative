@@ -2,14 +2,14 @@ module Data.Regex.Applicative.Compile (
   compile
 ) where
 
-import Control.Monad.Eff.Exception.Unsafe (unsafeThrow)
 import Control.Monad.State (State, evalState, modify, runState)
-import Data.List.Lazy (List, concatMap, nil, (:))
+import Data.List.Lazy (List, nil, (:))
 import Data.Map as M
-import Data.Maybe (fromMaybe', isJust, maybe)
+import Data.Maybe (isJust, maybe)
+import Data.Newtype (class Newtype, over)
 import Data.Regex.Applicative.Types (Greediness(..), RE, Thread, ThreadId(..), mkThread, elimRE)
-import Data.Tuple (Tuple(..))
-import Prelude (class Functor, class Semigroup, const, discard, flip, id, map, pure, ($), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
+import Data.Tuple (Tuple(..), uncurry)
+import Prelude (class Functor, const, discard, flip, id, map, pure, ($), (*>), (<$>), (<*>), (<<<), (<>), (>>=), (>>>))
 
 
 compile :: forall s a r.
@@ -17,7 +17,6 @@ compile :: forall s a r.
            (a -> List (Thread s r)) ->
            List (Thread s r)
 compile e k = compile2 e (SingleCont k)
-
 
 -- continuation
 data Cont a =
@@ -52,26 +51,24 @@ compile2 = elimRE {
     let
       a1 = compile2 n1
       a2 = compile2 n2
-    in
-      \k -> case k of
-        SingleCont k' ->
-          a1 $ SingleCont $ \a1_value -> a2 $ SingleCont $ k' <<< a1_value
-        EmptyNonEmpty ke kn ->
-          a1 $ EmptyNonEmpty
-            -- empty
-            (\a1_value ->
-              a2 $ EmptyNonEmpty (ke <<< a1_value) (kn <<< a1_value))
-            -- non-empty
-            (\a1_value ->
-              a2 $ EmptyNonEmpty (kn <<< a1_value) (kn <<< a1_value)),
+      f (SingleCont k) =
+        SingleCont $ \aVal -> a2 $ SingleCont $ k <<< aVal
+      f (EmptyNonEmpty ke kn) =
+        let
+          ene k1 k2 aVal = a2 $ EmptyNonEmpty (k1 <<< aVal) (k2 <<< aVal)
+        in
+          EmptyNonEmpty (ene ke kn) (ene kn kn)
+    in a1 <<< f,
   alt: \n1 n2 ->
     let
       a1 = compile2 n1
       a2 = compile2 n2
     in \k -> a1 k <> a2 k,
   fail: const nil,
-  fmap: \f n -> let a = compile2 n in \k -> a $ map ((>>>) f) k,
-  -- This is actually the point where we use the difference between
+  fmap: \f n ->
+    let a = compile2 n
+    in \k -> a $ map ((>>>) f) k,
+  -- This is the point where we use the difference between
   -- continuations. For the inner RE the empty continuation is a
   -- "failing" one in order to avoid non-termination.
   star: \g f b n ->
@@ -87,67 +84,44 @@ compile2 = elimRE {
     in threads b
 }
 
-data FSMState
-  = SAccept
-  | STransition ThreadId
+data Fsa c = Fsa (List FsaState) (FsaMap c)
 
-type FSMMap c = M.Map Int (Tuple (c -> Boolean) (List FSMState))
+data FsaState = SAccept | STransition ThreadId
 
-mkNFA :: forall c a.
-         RE c a ->
-         Tuple (List FSMState) (FSMMap c)
-mkNFA e = flip runState M.empty $ go (SAccept : nil) e where
+newtype FsaMap c = FsaMap (M.Map Int (Tuple (c -> Boolean) (List FsaState)))
+derive instance newtypeFsaMap :: Newtype (FsaMap c) _
+emptyFsaMap :: forall c. FsaMap c
+emptyFsaMap = FsaMap M.empty
+
+mkFsa :: forall c a. RE c a -> Fsa c
+mkFsa e = uncurry Fsa result where
+  stateT = go (SAccept : nil) e
+  result = runState stateT emptyFsaMap
   go :: forall c' a'.
-        List FSMState ->
+        List FsaState ->
         RE c' a' ->
-        State (FSMMap c') (List FSMState)
+        State (FsaMap c') (List FsaState)
   go k = elimRE {
     eps: \a -> pure k  -- FIXME: what to do here?
     , fail: pure nil
-    , symbol:
-      \i@(ThreadId n) p ->
-        do
-          modify $ M.insert n $ Tuple (isJust <<< p) k
-          pure (STransition i : nil)
+    , symbol: \i@(ThreadId n) p -> do
+        modify $ over FsaMap $ M.insert n $ Tuple (isJust <<< p) k
+        pure ((STransition i) : nil)
     , app: \n1 n2 -> (go k n2) >>= (flip go n1)
     , alt: \n1 n2 -> (<>) <$> go k n1 <*> go k n2
     , star: \g _ _ n ->
-      let
-        entries = findEntries n
-        cont = combine g (<>) entries k
-      in
-        -- return value of 'go' is ignored -- it should be a subset of
-        -- 'cont'
-        go cont n >>= \_ -> pure cont
+      let cont = combine g (<>) (findEntries n) k
+      -- return value of 'go' is ignored -- it should be a subset of 'cont's
+      in go cont n *> pure cont
     , fmap: \_ n -> go k n
   }
 
   -- A simple (although a bit inefficient) way to find all entry points is
   -- just to use 'go'
-  findEntries :: forall s' a'. RE s' a' -> (List FSMState)
-  findEntries e' = evalState (go nil e') M.empty
-
-compile2_ :: forall s a r.
-             RE s a ->
-             Cont (List (Thread s r)) ->
-             List (Thread s r)
-compile2_ e' = case mkNFA e' of
-  Tuple entries fsmap ->
-    let
-      mkThread' _ k1 (STransition i@(ThreadId n)) =
-        -- TODO: unsafeThrow?!
-        case fromMaybe' (\_ -> unsafeThrow "Unknown id") $ M.lookup n fsmap of
-          Tuple p cont -> (
-            mkThread i $ \s ->
-              if p s
-                then concatMap (mkThread' k1 k1) cont
-                else nil
-          ) : nil
-      mkThread' k0 _ SAccept = k0
-    in
-      \k -> concatMap (mkThread' (emptyCont k) (nonEmptyCont k)) entries
+  findEntries :: forall s' a'. RE s' a' -> List FsaState
+  findEntries e' = evalState (go nil e') emptyFsaMap
 
 
-combine :: forall a. Semigroup a => Greediness -> (a -> a -> a) -> a -> a -> a
+combine :: forall a. Greediness -> (a -> a -> a) -> a -> a -> a
 combine Greedy = id
 combine NonGreedy = flip
