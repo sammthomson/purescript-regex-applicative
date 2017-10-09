@@ -33,38 +33,38 @@ derive instance genericGreedines :: Generic Greediness _
 instance showGreediness :: Show Greediness where
   show = genericShow
 
--- | Type of regular expressions that recognize symbols of type @c@ and
--- | produce a result of type @a@.
+-- | Type of regular expressions that recognize symbols of type `c` and
+-- | produce a result of type `a`.
 -- |
--- | Regular expressions can be built using 'Functor', 'Applicative',
--- | 'Alternative', and 'Monoid' instances in the following natural way:
+-- | Regular expressions can be built using `Functor`, `Applicative`,
+-- | `Alternative`, and `Monoid` instances in the following natural way:
 -- |
--- | * @f@ '<$>' @ra@ matches iff @ra@ matches, and its return value is the result
--- | of applying @f@ to the return value of @ra@.
+-- | * `f <$> ra` matches iff `ra` matches, and its return value is the result
+-- | of applying `f` to the return value of `ra`.
 -- |
--- | * 'pure' @x@ matches the empty string (i.e. it does not consume any symbols),
--- | and its return value is @x@
+-- | * `pure x` matches the empty string (i.e. it does not consume any symbols),
+-- | and its return value is `x`.
 -- |
--- | * @rf@ '<*>' @ra@ matches a string iff it is a concatenation of two
--- | strings: one matched by @rf@ and the other matched by @ra@. The return value
--- | is @f a@, where @f@ and @a@ are the return values of @rf@ and @ra@
+-- | * `rf <*> ra` matches a string iff it is a concatenation of two
+-- | strings: one matched by `rf` and the other matched by `ra`. The return value
+-- | is `f a`, where `f` and `a` are the return values of `rf` and `ra`
 -- | respectively.
 -- |
--- | * @ra@ '<>' @rb@ matches a string iff it is a concatenation of two
--- | strings: one matched by @ra@ and the other matched by @rb@. The return value
--- | is @a <> b@, where @a@ and @b@ are the return values of @ra@ and @rb@
+-- | * `ra <> rb` matches a string iff it is a concatenation of two
+-- | strings: one matched by `ra` and the other matched by `rb`. The return value
+-- | is `a <> b`, where `a` and `b` are the return values of `ra` and `rb`
 -- | respectively.
 -- |
--- | * @ra@ '<|>' @rb@ matches a string which is accepted by either @ra@ or @rb@.
--- | It is left-biased, so if both can match, the result of @ra@ is used.
+-- | * `ra <|> rb` matches a string which is accepted by either `ra` or `rb`.
+-- | It is left-biased, so if both can match, the result of `ra` is used.
 -- |
--- | * 'empty' is a regular expression which does not match any string.
+-- | * `empty` is a regular expression which does not match any string.
 -- |
--- | * 'many' @ra@ matches concatenation of zero or more strings matched by @ra@
--- | and returns the list of @ra@'s return values on those strings.
+-- | * `many a` matches concatenation of zero or more strings matched by `ra`
+-- | and returns the list of `ra`'s return values on those strings.
 -- |
--- | * 'some' @ra@ matches concatenation of one or more strings matched by @ra@
--- | and returns the list of @ra@'s return values on those strings.
+-- | * `some ra` matches concatenation of one or more strings matched by `ra`
+-- | and returns the list of `ra`'s return values on those strings.
 data RE c a =
   Eps a
   | Fail
@@ -93,8 +93,8 @@ instance showRE :: Show (RE c a) where
 -- | Match zero or more instances of the given expression, which are combined using
 -- | the given folding function.
 -- |
--- | 'Greediness' argument controls whether this regular expression should match
--- | as many as possible ('Greedy') or as few as possible ('NonGreedy') instances
+-- | `Greediness` argument controls whether this regular expression should match
+-- | as many as possible (`Greedy`) or as few as possible (`NonGreedy`) instances
 -- | of the underlying expression.
 mkStar :: forall c a b.
           Greediness       -- repetition may be greedy or not
@@ -147,15 +147,15 @@ instance semigroupRe :: Semigroup a => Semigroup (RE c a) where
   append = lift2 (<>)
 
 instance profunctorRe :: Profunctor RE where
-  dimap f g r = g <$> cmap f r where
+  dimap g f r = f <$> cmap g r where
     -- contravariant map
     cmap :: forall a b c. (a -> b) -> RE b c -> RE a c
-    cmap f = go where
+    cmap g' = go where
       go :: forall d. RE b d -> RE a d
       go = elimRE {
           eps:              Eps
           , fail:           Fail
-          , symbol: \i p    -> Symbol i (p <<< f)  -- <- only place input is consumed
+          , symbol: \i p    -> Symbol i (p <<< g')  -- <-- g' used
           , alt: \r1 r2     -> go r1 <|> go r2
           , app: \r1 r2     -> go r1 <*> go r2
           , star: \g op z r -> mkStar g op z (go r)

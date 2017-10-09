@@ -11,49 +11,58 @@ import Data.Regex.Applicative.Types (Apped(..), Greediness(..), Mapped(..), RE(.
 import Prelude (class Functor, const, flip, map, ($), (<<<), (<>), (>>>))
 
 
--- | A thread is either a result, or corresponds to a Symbol in the regular
--- | expression which is expected by that thread.
+-- | A `Thread` is an intermediate state in the proess of applying a
+-- | regex to an input string.
+-- | It is either an `Accept` state with a result of type `r`, or a
+-- | (non-deterministic) transition function of the next input symbol.
 data Thread c r =
   Thread
-    { threadId_ :: ThreadId
-    , _threadCont :: c -> List (Thread c r)
+    { threadId :: ThreadId
+    , threadCont :: c -> List (Thread c r)
     }
   | Accept r
 
 mkThread :: forall c r. ThreadId -> (c -> List (Thread c r)) -> Thread c r
-mkThread i c = Thread { threadId_: i, _threadCont: c }
+mkThread i c = Thread { threadId: i, threadCont: c }
 
 -- | Two continuations: one for when the match is empty, and
 -- | one for when the match is non-empty.
--- | This is needed to guarantee termination in the "Star".
+-- | We use this to guarantee termination in the "Star" case, so that we don't
+-- | match on the empty string forever.
 data OneOrTwoConts a =
-  SingleCont a
-  | EmptyNonEmpty a a
+  OneCont a
+  | TwoConts {
+    empty :: a
+    , nonEmpty :: a
+  }
+mkTwoConts :: forall a. a -> a -> OneOrTwoConts a
+mkTwoConts e n = TwoConts { empty: e, nonEmpty: n }
 
 instance functorCont :: Functor OneOrTwoConts where
-  map f (SingleCont a) = SingleCont (f a)
-  map f (EmptyNonEmpty a b) = EmptyNonEmpty (f a) (f b)
+  map f (OneCont a) = OneCont (f a)
+  map f (TwoConts { empty: a, nonEmpty: b } ) = mkTwoConts (f a) (f b)
 
+-- | Get the appropriate continuation for handling empty matches
 emptyCont :: forall a. OneOrTwoConts a -> a
-emptyCont (SingleCont a) = a
-emptyCont (EmptyNonEmpty a _) = a
+emptyCont (OneCont a) = a
+emptyCont (TwoConts t) = t.empty
 
+-- | Get the appropriate continuation for handling non-empty matches
 nonEmptyCont :: forall a. OneOrTwoConts a -> a
-nonEmptyCont (SingleCont a) = a
-nonEmptyCont (EmptyNonEmpty _ a) = a
+nonEmptyCont (OneCont a) = a
+nonEmptyCont (TwoConts t) = t.nonEmpty
 
 compile :: forall c a r.
            RE c a ->
            (a -> List (Thread c r)) ->
            List (Thread c r)
-compile e k = go e (SingleCont k) where
+compile e cont = go e (OneCont cont) where
   go :: forall a'. RE c a' ->
                    OneOrTwoConts (a' -> List (Thread c r)) ->
                    List (Thread c r)
-  go (Eps a) = flip emptyCont a
+  go (Eps a) = flip emptyCont a  -- empty match, use the empty continuation
   go (Fail) = const nil
-  go (Symbol i p) = \k ->
-    (mkThread i (p >>> maybe nil (nonEmptyCont k))) : nil
+  go (Symbol i p) = \k -> (mkThread i (p >>> maybe nil (nonEmptyCont k))) : nil
   go (Alt n1 n2) =
     let
       a1 = go n1
@@ -63,12 +72,12 @@ compile e k = go e (SingleCont k) where
     let
       a1 = go n1
       a2 = go n2
-      f2 (SingleCont k) = SingleCont $ \aVal -> a2 $ SingleCont $ k <<< aVal
-      f2 (EmptyNonEmpty ke kn) =
+      f2 (OneCont k) = OneCont $ \aVal -> a2 $ OneCont $ k <<< aVal
+      f2 (TwoConts { empty: ke, nonEmpty: kn } ) =
         let
-          ene k1 k2 aVal = a2 $ EmptyNonEmpty (k1 <<< aVal) (k2 <<< aVal)
+          ene k1 k2 aVal = a2 $ mkTwoConts (k1 <<< aVal) (k2 <<< aVal)
         in
-          EmptyNonEmpty (ene ke kn) (ene kn kn)
+          mkTwoConts (ene ke kn) (ene kn kn)
     in a1 <<< f2) r
   go (Star r) = runExists (\(Starred g f b n) ->
     let
@@ -78,9 +87,9 @@ compile e k = go e (SingleCont k) where
       threads b' k =
         combine g
           (a $
-            EmptyNonEmpty
+            mkTwoConts
               (const nil)
-              (\v -> threads (f b' v) (SingleCont $ nonEmptyCont k)))
+              (\v -> threads (f b' v) (OneCont $ nonEmptyCont k)))
           (emptyCont k b')
     in threads b) r
   go (Fmap r) = runExists (\(Mapped f n) ->
