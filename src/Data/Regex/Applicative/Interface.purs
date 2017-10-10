@@ -1,11 +1,11 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative ((<|>))
+import Control.Alternative (empty, (<|>))
 import Control.Apply (lift2)
 import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
-import Data.Regex.Applicative.Compile (Thread, addThread, compile, emptyObject, failed, fromThreads, getResult, results, step, threads)
+import Data.Regex.Applicative.Compile (Thread, addThread, compile, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), RE(..), ThreadId(..), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
@@ -141,7 +141,7 @@ findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
         Nothing -> walk (addThread obj head) tail
 
   go obj s' resOld =
-    case walk emptyObject $ threads obj of
+    case walk empty $ threads obj of
       (Tuple obj' resThis) ->
         let
           res = ((flip Tuple s') <$> resThis) <|> resOld

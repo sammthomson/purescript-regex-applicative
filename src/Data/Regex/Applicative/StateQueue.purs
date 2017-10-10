@@ -9,11 +9,11 @@ module Data.Regex.Applicative.StateQueue
   , mkStateQueue
 ) where
 
-import Data.List.Lazy (List, cons, nil, reverse)
 import Data.Foldable (class Foldable, foldl, foldMap, foldr)
+import Data.List.Lazy (List, cons, nil, reverse)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Set as S
-import Prelude (class Eq, class Show, show, ($), (<<<), (<>))
+import Prelude (class Eq, class Functor, class Show, show, ($), (<<<), (<>))
 
 -- | 'StateQueue' is a data structure that can efficiently insert elements
 -- | (preserving their order)
@@ -31,6 +31,8 @@ derive instance eqStateQueue :: Eq a => Eq (StateQueue a)
 instance showStateQueue :: Show a => Show (StateQueue a) where
   show (StateQueue { elements, ids }) =
     "(StateQueue { elements: " <> show elements <> ", " <> show ids <> " })"
+
+derive instance functorStateQueue :: Functor StateQueue
 
 instance foldableStateQueue :: Foldable StateQueue where
   foldr f a = foldr f a <<< getElements
