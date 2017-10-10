@@ -19,7 +19,7 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
-import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (<<<), (<>))
+import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (#), (<<<), (<>))
 
 
 newtype ThreadId = ThreadId Int
@@ -74,7 +74,8 @@ data RE c a =
   | Star (Exists (Starred c a))
   | Fmap (Exists (Mapped c a))
 
--- we don't actually care about the intermediate type `b`
+-- we don't care about the intermediate type `b`,
+-- but it needs to be internally consistent.
 data Apped c a b = Apped (RE c (b -> a)) (RE c b)
 data Starred c a b = Starred Greediness (a -> b -> a) a (RE c b)
 data Mapped c a b = Mapped (b -> a) (RE c b)
@@ -105,7 +106,6 @@ mkStar :: forall c a b.
           -> RE c a
 mkStar g op z r = Star $ mkExists $ Starred g op z r
 
--- eliminator for RE
 type FoldRE c a r = {
   eps :: a -> r
   , fail :: r
@@ -116,15 +116,17 @@ type FoldRE c a r = {
   , fmap :: forall b. (b -> a) -> RE c b -> r
 }
 
+-- | Eliminator for RE.
+-- | Can take some of the `runExists` cruft out of pattern matching.
 elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
 elimRE elim re = case re of
   Eps a -> elim.eps a
   Fail -> elim.fail
   Symbol t p -> elim.symbol t p
   Alt a b -> elim.alt a b
-  App x -> runExists (\(Apped ff b) -> elim.app ff b) x
-  Star x -> runExists (\(Starred g op z re) -> elim.star g op z re) x
-  Fmap x -> runExists (\(Mapped f x) -> elim.fmap f x) x
+  App x -> x # runExists \(Apped ff b) -> elim.app ff b
+  Star x -> x # runExists \(Starred g op z re) -> elim.star g op z re
+  Fmap x -> x # runExists \(Mapped f x) -> elim.fmap f x
 
 instance functorRe :: Functor (RE c) where
   map f x = Fmap $ mkExists $ Mapped f x

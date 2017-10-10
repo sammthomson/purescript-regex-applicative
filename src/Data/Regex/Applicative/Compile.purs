@@ -1,6 +1,7 @@
 module Data.Regex.Applicative.Compile
   ( Thread
   , CompiledRe
+  , emptyRe
   , compile
   , threads
   , failed
@@ -12,15 +13,15 @@ module Data.Regex.Applicative.Compile
   ) where
 
 import Control.Applicative (pure, (<*), (<*>))
+import Control.Monad.Cont (Cont, cont, runCont)
 import Control.Monad.State (State, evalState, gets, modify)
-import Control.Plus (class Alt, class Plus, empty, (<|>))
-import Data.Exists (runExists)
+import Control.Plus (empty, (<|>))
 import Data.Foldable (foldl)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (Apped(..), Greediness(..), Mapped(..), RE(..), Starred(..), ThreadId(..), elimRE, mkStar)
-import Prelude (class Functor, const, flip, map, ($), (+), (<$>), (<<<), (>>>))
+import Data.Regex.Applicative.Types (Greediness(..), RE(Symbol), ThreadId(..), elimRE, mkStar)
+import Prelude (class Functor, const, flip, ($), (+), (<$>), (>>>))
 
 
 -- | A `Thread` is one intermediate state (of possibly many) in the process of
@@ -44,7 +45,7 @@ getResult (Thread _) = Nothing
 -- | Feed a symbol into a thread.
 stepThread :: forall c r. Thread c r -> c -> CompiledRe c r
 stepThread (Thread t) c = t.step c
-stepThread (Accept _) _ = empty
+stepThread (Accept _) _ = emptyRe
 
 
 -- | A `RE c r` that has been compiled into a non-deterministic state machine.
@@ -57,11 +58,8 @@ newtype CompiledRe c r = CompiledRe (SQ.StateQueue (Thread c r))
 
 derive instance functorCompiledRe :: Functor (CompiledRe c)
 
-instance altCompiledRe :: Alt (CompiledRe c) where
-  alt a b = foldl addThread a $ threads b
-
-instance plusCompiledRe :: Plus (CompiledRe c) where
-  empty = CompiledRe SQ.empty
+emptyRe :: forall c r. CompiledRe c r
+emptyRe = CompiledRe SQ.empty
 
 -- | List of all threads of a `CompiledRe`.
 threads :: forall c r. CompiledRe c r -> List (Thread c r)
@@ -71,7 +69,7 @@ threads (CompiledRe sq) = fromFoldable sq
 -- | threads come from the same `CompiledRe`, unless you know what you're doing.
 -- | However, it should be safe to filter out or rearrange threads.
 fromThreads :: forall c r. List (Thread c r) -> CompiledRe c r
-fromThreads ts = foldl addThread empty ts
+fromThreads ts = foldl addThread emptyRe ts
 
 singleton :: forall c r. Thread c r -> CompiledRe c r
 singleton t = fromThreads $ t : nil
@@ -86,7 +84,7 @@ results obj = mapMaybe getResult $ threads obj
 
 -- | Feed a symbol into a `CompiledRe`.
 step :: forall c r. CompiledRe c r -> c -> CompiledRe c r
-step (CompiledRe sq) c = foldl op empty $ sq where
+step (CompiledRe sq) c = foldl op emptyRe $ sq where
   op acc t = foldl addThread acc $ threads $ stepThread t c
 
 -- | Add a thread to a `CompiledRe`. The new thread will have lower priority than the
@@ -99,84 +97,41 @@ addThread (CompiledRe q) t = CompiledRe $
     Accept _ -> SQ.insert t q
     Thread { threadId: ThreadId i } -> SQ.insertUnique i t q
 
-
--- | Holds one or two continuations: one for when the match is empty, and
--- | one for when the match is non-empty.
--- | We use this to guarantee termination in the "Star" case, so that we don't
--- | match on the empty string forever.
-data OneOrTwo a =
-  One a
-  | Two
-    { empty :: a
-    , nonEmpty :: a
-    }
-
-mkTwo :: forall a. a -> a -> OneOrTwo a
-mkTwo e n = Two { empty: e, nonEmpty: n }
-
-derive instance functorOneOrTwo :: Functor OneOrTwo
-
--- | Get the continuation for handling empty matches.
-emptyCont :: forall a. OneOrTwo a -> a
-emptyCont (One a) = a
-emptyCont (Two t) = t.empty
-
--- | Get the continuation for handling non-empty matches.
-nonEmptyCont :: forall a. OneOrTwo a -> a
-nonEmptyCont (One a) = a
-nonEmptyCont (Two t) = t.nonEmpty
+pureRe :: forall c r. r -> CompiledRe c r
+pureRe r = singleton (Accept r)
 
 -- | Compile a regular expression into a non-deterministic state machine.
 compile :: forall c r. RE c r -> CompiledRe c r
-compile e = go (renumber e) (One (singleton <<< Accept)) where
-  -- Given a regex `r` and continuation(s) `k`, `go` builds a `CompiledRe` that
-  -- first matches `r` and then runs `k` on the result of `r`.
-  -- If `r` succeeds via empty match, the `empty` case in `k` is used,
-  -- otherwise the `nonEmpty` case is used.
-  go :: forall r'. RE c r' ->
-                   OneOrTwo (r' -> CompiledRe c r) ->
-                   CompiledRe c r
-  go (Eps a) = \k -> emptyCont k a  -- empty match, use the empty continuation
-  go (Fail) = const empty
-  go (Symbol i p) = \k -> singleton $ Thread
-    { threadId: i
-    , step: (p >>> maybe empty (nonEmptyCont k))  -- non-empty match
-    }
-  go (Alt n1 n2) =
-    let
-      a1 = go n1
-      a2 = go n2
-    in \k -> a1 k <|> a2 k
-  go (App r) = runExists (\(Apped n1 n2) ->
-      let
-        a1 = go n1
-        a2 = go n2
-        f2 (One k) = One $ \k' -> a2 $ One (k <<< k')
-        f2 (Two { empty, nonEmpty } ) =
-          let
-            ene k1 k2 k' = a2 $ mkTwo (k1 <<< k') (k2 <<< k')
-          in
-            mkTwo (ene empty nonEmpty) (ene nonEmpty nonEmpty)
-      in
-        a1 <<< f2
-    ) r
-  go (Star r) = runExists (\(Starred g f b n) ->
-    let
-      a = go n
-      combine NonGreedy = (<|>)
-      combine Greedy = flip (<|>)
-      threads b' k =
-        combine g
-          (emptyCont k b')
-          (a $
-            mkTwo
-              (const empty)
-              (\v -> threads (f b' v) (One $ nonEmptyCont k)))
-    in threads b) r
-  go (Fmap r) = runExists (\(Mapped f n) ->
-      let a = go n
-      in \k -> a $ map ((>>>) f) k
-    ) r
+compile e = runCont (go (renumber e)) pureRe where
+  altRe a b = foldl addThread a $ threads b
+  -- | Builds an NFSA using continuation passing style.
+  -- | Given a regex `r` and continuation `k`, `go` builds a `CompiledRe` that
+  -- | first matches `r` and then runs `k` on the result of `r`.
+  go :: forall a. RE c a -> Cont (CompiledRe c r) a
+  go = elimRE
+    { eps: pure
+    , fail: cont $ const emptyRe
+    , symbol: \i p -> cont \k -> singleton $ Thread
+      { threadId: i
+      , step: (p >>> maybe emptyRe k)
+      }
+    , alt: \n1 n2 ->
+        let
+          a1 = go n1
+          a2 = go n2
+        in
+          cont \k -> altRe (runCont a1 k) (runCont a2 k)
+    , app: \n1 n2 -> go n1 <*> go n2
+    , star: \g op z n ->
+        let
+          a = go n
+          combine NonGreedy = altRe
+          combine Greedy = flip altRe
+          thrds z' k = combine g (k z') (runCont a $ \v -> thrds (op z' v) k)
+        in
+          cont $ thrds z
+    , fmap: \f n -> f <$> go n
+  }
 
 -- | Give each `Symbol` node a unique `ThreadId`.
 renumber :: forall c r. RE c r -> RE c r
@@ -186,10 +141,10 @@ renumber e =
     fresh = gets ThreadId <* (modify $ (+) 1)
     go :: forall t b. RE t b -> State Int (RE t b)
     go = elimRE
-      { eps: \a -> pure $ Eps a
-      , fail: pure Fail
+      { eps: \a -> pure $ pure a
+      , fail: pure empty
       , symbol: \_ p -> flip Symbol p <$> fresh  -- <-- fresh
-      , alt: \a1 a2 -> Alt <$> go a1 <*> go a2
+      , alt: \a1 a2 -> (<|>) <$> go a1 <*> go a2
       , app: \a1 a2 -> (<*>) <$> go a1 <*> go a2
       , star: \g f b a -> mkStar g f b <$> go a
       , fmap: \f a -> (<$>) f <$> go a

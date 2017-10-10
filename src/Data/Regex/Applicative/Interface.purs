@@ -1,11 +1,11 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative (empty, (<|>))
+import Control.Alternative (pure, (<|>))
 import Control.Apply (lift2)
 import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
-import Data.Regex.Applicative.Compile (Thread, addThread, compile, failed, fromThreads, getResult, results, step, threads)
+import Data.Regex.Applicative.Compile (Thread, emptyRe, addThread, compile, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), RE(..), ThreadId(..), elimRE, mkStar)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
@@ -70,7 +70,7 @@ str s = fromFoldable <$> (arr $ toCharArray s)
 withMatched :: forall c a. RE c a -> RE c (Tuple (List c) a)
 withMatched = go where
   go = elimRE {
-    eps: \a -> Tuple nil <$> Eps a
+    eps: \a -> Tuple nil <$> pure a
     , fail: Fail
     , symbol: \i p -> Symbol i (\c -> Tuple (c : nil) <$> p c)
     , alt: \a b -> withMatched a <|> withMatched b
@@ -141,7 +141,7 @@ findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
         Nothing -> walk (addThread obj head) tail
 
   go obj s' resOld =
-    case walk empty $ threads obj of
+    case walk emptyRe $ threads obj of
       (Tuple obj' resThis) ->
         let
           res = ((flip Tuple s') <$> resThis) <|> resOld

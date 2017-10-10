@@ -7,7 +7,7 @@ import Control.Plus (empty)
 import Data.List.Lazy (List, fromFoldable, nil, (:))
 import Data.Maybe (Maybe(..), isJust)
 import Data.NonEmpty ((:|))
-import Data.Regex.Applicative (RE, few, many, findFirstPrefix, str, sym, withMatched, (=~))
+import Data.Regex.Applicative (RE, few, findFirstInfix, findFirstPrefix, findLongestPrefix, many, str, sym, withMatched, (=~))
 import Data.String (toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
@@ -15,7 +15,7 @@ import Prelude (class Eq, class Show, Unit, discard, join, map, pure, show, unit
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
-import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck)
+import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 
@@ -101,7 +101,6 @@ re7 =
 re8 :: RE Char (Tuple (List Char) (List Char))
 re8 = Tuple <$> many (sym 'a' <|> sym 'b') <*> many (sym 'b' <|> sym 'c')
 
--- NB: we don't test these against the reference impl, 'cause it will loop!
 re9 :: RE Char (List Char)
 re9 = many (sym 'a' <|> empty) <* sym 'b'
 
@@ -149,9 +148,11 @@ testRecognitionAgainstParsing re f s =
 main :: forall e. Eff (QCRunnerEffects e) Unit
 main = run [consoleReporter] $ do
   describe "Tests" $ do
-    describe "Matching vs reference" $ do
+    describe "Fixtures" $ do
       let a1 = 'a' : nil
-      it "re0 fixture" $ quickCheck $ (a1 =~ re0) ==? reference re0 a1
+      it "re0" $ quickCheck' 1 $ (a1 =~ re0) ==? reference re0 a1
+      it "re9" $ quickCheck' 1 $ (a1 =~ re9) ==? reference re9 a1
+    describe "Matching vs reference" $ do
       it "re0" $ quickCheck $ propMap re0 unA
       it "re1" $ quickCheck $ propMap re1 unA
       it "re2" $ quickCheck $ propMap re2 unAB
@@ -161,6 +162,8 @@ main = run [consoleReporter] $ do
       it "re6" $ quickCheck $ propMap re6 unA
       it "re7" $ quickCheck $ propMap re7 unAB
       it "re8" $ quickCheck $ propMap re8 unAB
+      it "re9" $ quickCheck $ propMap re9 unAB
+      it "re10" $ quickCheck $ propMap re10 unAB
     describe "Recognition vs parsing" $ do
       it "re1" $ quickCheck $ testRecognitionAgainstParsing re1 unA
       it "re2" $ quickCheck $ testRecognitionAgainstParsing re2 unAB
@@ -170,31 +173,34 @@ main = run [consoleReporter] $ do
       it "re6" $ quickCheck $ testRecognitionAgainstParsing re6 unA
       it "re7" $ quickCheck $ testRecognitionAgainstParsing re7 unABC
       it "re8" $ quickCheck $ testRecognitionAgainstParsing re8 unABC
-      it "re8" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
-      it "re8" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
+      it "re9" $ quickCheck $ testRecognitionAgainstParsing re9 unAB
+      it "re10" $ quickCheck $ testRecognitionAgainstParsing re10 unAB
       it "withMatched" $ quickCheck prop_withMatched
     describe "Matching functions" $ do
       describe "findFirstPrefix" $ do
-        it "t1" $ quickCheck $
-            findFirstPrefix (str "a" <|> str "ab") (toCharArray "abc") ==?
-            Just (Tuple ('a' : nil) ('b' : 'c' : nil))
-        it "t2" $ quickCheck $
-            findFirstPrefix (str "ab" <|> str "a") (toCharArray "abc") ==?
-            Just (Tuple ('a' : 'b' : nil) ('c' : nil))
-        it "t3" $ quickCheck $
-            findFirstPrefix (str "bc") (toCharArray "abc") ==?
-            Nothing
-      -- describe "findFirstInfix" $ do
-      --   it "t1" $ quickCheck $
-      --       (findFirstInfix ("a" <|> "ab") "tabc") ==?
-      --       (Just (Tuple "t" (Tuple "a" "bc")))
-      --   it "t2" $ quickCheck $
-      --       (findFirstInfix ("ab" <|> "a") "tabc") ==?
-      --       (Just (Tuple "t" (Tuple "ab" "c")))
-      -- describe "findLongestPrefix" $ do
-      --   it "t1" $ quickCheck $
-      --       (findLongestPrefix ("a" <|> "ab") "abc") ==?
-      --       (Just (Tuple "ab" "c"))
+        it "t1" $ quickCheck' 1 $
+          findFirstPrefix (str "a" <|> str "ab") (toCharArray "abc") ==?
+          Just (Tuple ('a' : nil) ('b' : 'c' : nil))
+        it "t2" $ quickCheck' 1 $
+          findFirstPrefix (str "ab" <|> str "a") (toCharArray "abc") ==?
+          Just (Tuple ('a' : 'b' : nil) ('c' : nil))
+        it "t3" $ quickCheck' 1 $
+          findFirstPrefix (str "bc") (toCharArray "abc") ==?
+          Nothing
+      describe "findFirstInfix" $ do
+        it "t1" $ quickCheck' 1 $
+          (findFirstInfix (str "a" <|> str "ab") (toCharArray "tabc")) ==?
+          (Just (Tuple ('t' : nil) (Tuple ('a' : nil) ('b' : 'c' : nil))))
+        it "t2" $ quickCheck' 1 $
+          (findFirstInfix (str "ab" <|> str "a") (toCharArray "tabc")) ==?
+          (Just (Tuple ('t' : nil) (Tuple ('a' : 'b' : nil) ('c' : nil))))
+      describe "findLongestPrefix" $ do
+        it "t1" $ quickCheck' 1 $
+          (findLongestPrefix (str "a" <|> str "ab") (toCharArray "abc")) ==?
+          (Just (Tuple ('a' : 'b' : nil) ('c' : nil)))
+        it "re9" $ quickCheck' 1 $
+          (findLongestPrefix re9 (toCharArray "abc")) ==?
+          (Just (Tuple ('a' : nil) ('c' : nil)))
       --   it "t2" $ quickCheck $
       --       (findLongestPrefix ("ab" <|> "a") "abc") ==?
       --       (Just (Tuple "ab" "c"))
