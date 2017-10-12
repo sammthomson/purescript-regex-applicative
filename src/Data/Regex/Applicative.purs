@@ -28,9 +28,12 @@ import Data.Regex.Applicative.Interface (
   , anySym
   , str
   , few
+  , some'
   , some
+  , many'
   , many
   , withMatched
+  , match'
   , match
   , (=~)
   , replace

@@ -8,7 +8,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Compile (Thread, emptyRe, addThread, compile, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), Re, ThreadId(..), elimRe, mkStar, mkSymbol)
-import Data.String (fromCharArray, joinWith, toCharArray)
+import Data.String (fromCharArray, joinWith, singleton, toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
 import Data.Unfoldable (class Unfoldable)
@@ -19,11 +19,11 @@ star :: forall c a. Greediness -> Re c a -> Re c (Array a)
 star g a = (A.fromFoldable <<< reverse) <$> mkStar g (flip (:)) nil a
 
 -- | `(v)*`. Matches `v` 0 or more times.
-many :: forall c a. Re c a -> Re c (Array a)
-many = star Greedy
+many' :: forall c a. Re c a -> Re c (Array a)
+many' = star Greedy
 
-manyStr :: Re Char String -> Re Char String
-manyStr re = joinWith "" <$> many re
+many :: Re Char String -> Re Char String
+many re = joinWith "" <$> many' re
 
 -- | Match zero or more instances of the given expression, but as
 -- | few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
@@ -37,12 +37,18 @@ manyStr re = joinWith "" <$> many re
 -- |     findFirstPrefix (many anySym  <* "b") "ababab"
 -- |     -- Just ("ababa","")
 -- | ```
-few :: forall c a. Re c a -> Re c (Array a)
-few = star NonGreedy
+few' :: forall c a. Re c a -> Re c (Array a)
+few' = star NonGreedy
+
+few :: forall c. Re c String -> Re c String
+few re = joinWith "" <$> few' re
 
 -- | `(v)+`.  Matches `v` 1 or more times.
-some :: forall c a. Re c a -> Re c (Array a)
-some v = A.(:) <$> v <*> many v
+some' :: forall c a. Re c a -> Re c (Array a)
+some' v = A.(:) <$> v <*> many' v
+
+some :: forall c. Re c String -> Re c String
+some re = joinWith "" <$> some' re
 
 -- | Match and return a single symbol which satisfies the predicate
 psym :: forall c. (c -> Boolean) -> Re c c
@@ -55,19 +61,26 @@ msym :: forall c a. (c -> Maybe a) -> Re c a
 msym p = mkSymbol (ThreadId 0) p
 
 -- | Match and return the given symbol
-sym :: forall c. Eq c => c -> Re c c
-sym c = psym ((==) c)
+sym' :: forall c. Eq c => c -> Re c c
+sym' c = psym ((==) c)
+
+sym :: Char -> Re Char String
+sym c = singleton <$> sym' c
 
 -- | Match and return any single symbol
-anySym :: forall c. Re c c
-anySym = msym Just
+anySym' :: forall c. Re c c
+anySym' = msym Just
+
+anySym :: Re Char String
+anySym = singleton <$> anySym'
 
 -- | Match and return the given sequence of symbols.
-arr :: forall a t. Eq a => Traversable t => t a -> Re a (t a)
-arr = traverse sym
+seq :: forall a t. Eq a => Traversable t =>
+       t a -> Re a (t a)
+seq = traverse sym'
 
 str :: String -> Re Char String
-str s = fromCharArray <$> (arr $ toCharArray s)
+str s = fromCharArray <$> (seq $ toCharArray s)
 
 
 -- | Return matched symbols as part of the return value
@@ -84,10 +97,20 @@ withMatched = go where
   }
 
 -- | @s =~ a = match a s@
-matchFlipped :: forall c a t. Foldable t => t c -> Re c a -> Maybe a
+matchFlipped' :: forall c a t. Foldable t => t c -> Re c a -> Maybe a
+matchFlipped' = flip match'
+
+infixl 2 matchFlipped' as =~~
+
+
+matchFlipped :: forall a. String -> Re Char a -> Maybe a
 matchFlipped = flip match
 
 infixl 2 matchFlipped as =~
+
+match' :: forall c a t. Foldable t => Re c a -> t c -> Maybe a
+match' re = let obj = compile re in
+    \s -> head $ results $ foldl step obj s
 
 -- | Attempt to match a string of symbols against the regular expression.
 -- | Note that the whole string (not just some part of it) should be matched.
@@ -104,9 +127,8 @@ infixl 2 matchFlipped as =~
 -- |    match (sym 'a' <|> sym 'b') $ toCharArray "ab"
 -- |    -- Nothing
 -- | ```
-match :: forall c a t. Foldable t => Re c a -> t c -> Maybe a
-match re = let obj = compile re in
-    \s -> head $ results $ foldl step obj s
+match :: forall r. Re Char r -> String -> Maybe r
+match re s = match' re (toCharArray s)
 
 -- | Find a string prefix which is matched by the regular expression.
 -- |
@@ -133,9 +155,9 @@ match re = let obj = compile re in
 -- |    findFirstPrefix "bc" "abc"
 -- |    -- Nothing
 -- | ```
-findFirstPrefix :: forall c a t. Foldable t =>
+findFirstPrefix' :: forall c a t. Foldable t =>
                    Re c a -> t c -> Maybe (Tuple a (Array c))
-findFirstPrefix re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s) Nothing
+findFirstPrefix' re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s) Nothing
   where
   walk obj lst = case uncons lst of
     Nothing -> Tuple obj Nothing
@@ -154,6 +176,9 @@ findFirstPrefix re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s)
             _ | failed obj' -> res
             Nothing -> res
             Just { head, tail } -> go (step obj' head) tail res
+
+findFirstPrefix :: forall a. Re Char a -> String -> Maybe (Tuple a String)
+findFirstPrefix re s = map fromCharArray <$> findFirstPrefix' re (toCharArray s)
 
 -- | Find the longest string prefix which is matched by the regular expression.
 -- |
@@ -179,9 +204,9 @@ findFirstPrefix re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s)
 -- |    findLongestPrefix lexeme $ toCharArray "iffoo"
 -- |    -- Just (Tuple (Right ('i' : 'f' : 'f' : 'o' : 'o' : nil)) nil)
 -- | ```
-findLongestPrefix :: forall c a t. Foldable t =>
+findLongestPrefix' :: forall c a t. Foldable t =>
                      Re c a -> t c -> Maybe (Tuple a (Array c))
-findLongestPrefix re s = map A.fromFoldable <$> go (compile re) (fromFoldable s) Nothing
+findLongestPrefix' re s = map A.fromFoldable <$> go (compile re) (fromFoldable s) Nothing
   where
   go obj s' resOld =
     let res = (map (flip Tuple s') $ head $ results obj) <|> resOld
@@ -191,10 +216,13 @@ findLongestPrefix re s = map A.fromFoldable <$> go (compile re) (fromFoldable s)
         Nothing -> res
         Just { head, tail } -> go (step obj head) tail res
 
+findLongestPrefix :: forall a. Re Char a -> String -> Maybe (Tuple a String)
+findLongestPrefix re s = map fromCharArray <$> findLongestPrefix' re (toCharArray s)
+
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
-findShortestPrefix :: forall c a t. Foldable t =>
+findShortestPrefix' :: forall c a t. Foldable t =>
                       Re c a -> t c -> Maybe (Tuple a (List c))
-findShortestPrefix re s = go (compile re) (fromFoldable s)
+findShortestPrefix' re s = go (compile re) (fromFoldable s)
   where
   go obj s' =
     case uncons $ results obj of
@@ -205,19 +233,31 @@ findShortestPrefix re s = go (compile re) (fromFoldable s)
           Nothing -> Nothing
           Just { head, tail } -> go (step obj head) tail
 
+findShortestPrefix :: forall a. Re Char a -> String -> Maybe (Tuple a String)
+findShortestPrefix re s = convert <$> (findShortestPrefix' re $ toCharArray s) where
+  convert (Tuple a xs) = Tuple a $ fromCharArray $ A.fromFoldable xs
+
 -- | Find the leftmost substring that is matched by the regular expression.
 -- | Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- | the prefix and suffix of the string surrounding the match.
-findFirstInfix :: forall c a t. Foldable t =>
+findFirstInfix' :: forall c a t. Foldable t =>
                   Re c a -> t c -> Maybe (Tuple (Array c) (Tuple a (Array c)))
+findFirstInfix' re s =
+  map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
+  findFirstPrefix' (Tuple <$> few' anySym' <*> re) (A.fromFoldable s)
+
+
+findFirstInfix :: forall a. Re Char a ->
+                               String ->
+                               Maybe (Tuple String (Tuple a String))
 findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
-  findFirstPrefix (Tuple <$> few anySym <*> re) (A.fromFoldable s)
+  findFirstPrefix (Tuple <$> few anySym <*> re) s
 
 -- | Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. Re c (Tuple Int (List c))
 prefixCounter = second reverse <$> reversedPrefix where
-  reversedPrefix = mkStar NonGreedy op (Tuple 0 nil) anySym
+  reversedPrefix = mkStar NonGreedy op (Tuple 0 nil) anySym'
   op (Tuple i acc) c = Tuple (i + 1) $ c : acc
 
 data InfixMatchingState c a = GotResult
@@ -306,16 +346,34 @@ findExtremalInfix newOrOld re s =
 -- | Find the leftmost substring that is matched by the regular expression.
 -- | Otherwise behaves like 'findLongestPrefix'. Returns the result together with
 -- | the prefix and suffix of the string surrounding the match.
-findLongestInfix :: forall c a t. Foldable t =>
+findLongestInfix' :: forall c a t. Foldable t =>
                     Re c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
-findLongestInfix r = findExtremalInfix preferOver r <<< fromFoldable
+findLongestInfix' r = findExtremalInfix preferOver r <<< fromFoldable
+
+findLongestInfix :: forall a. Re Char a -> String -> Maybe (Tuple String (Tuple a String))
+findLongestInfix r s =
+  let
+    list2str = fromCharArray <<< A.fromFoldable
+    convert = \(Tuple pre (Tuple a post)) ->
+                Tuple (list2str pre) (Tuple a (list2str post))
+  in
+    convert <$> (findLongestInfix' r $ toCharArray s)
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- | Otherwise behaves like 'findShortestPrefix'. Returns the result together with
 -- | the prefix and suffix of the string surrounding the match.
-findShortestInfix :: forall c a t. Foldable t =>
+findShortestInfix' :: forall c a t. Foldable t =>
                      Re c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
-findShortestInfix r = findExtremalInfix (flip preferOver) r <<< fromFoldable
+findShortestInfix' r = findExtremalInfix (flip preferOver) r <<< fromFoldable
+
+findShortestInfix :: forall a. Re Char a -> String -> Maybe (Tuple String (Tuple a String))
+findShortestInfix r s =
+  let
+    list2str = fromCharArray <<< A.fromFoldable
+    convert = \(Tuple pre (Tuple a post)) ->
+                Tuple (list2str pre) (Tuple a (list2str post))
+  in
+    convert <$> (findShortestInfix' r $ toCharArray s)
 
 -- | Replace matches of the regular expression with its value.
 -- |
@@ -330,7 +388,7 @@ findShortestInfix r = findExtremalInfix (flip preferOver) r <<< fromFoldable
 replace :: forall t c. Foldable t => Unfoldable t =>
            Re c (t c) -> t c -> t c
 replace r xs = toUnfoldable $ go (fromFoldable xs) nil where
-  go ys = case findLongestInfix r ys of
+  go ys = case findLongestInfix' r ys of
     Nothing -> \zs -> ys <> zs
     Just (Tuple before (Tuple m rest)) -> \zs ->
       before <> (fromFoldable m) <> (go rest zs)

@@ -13,7 +13,7 @@ import Control.Alt ((<|>))
 import Data.Char.Unicode (digitToInt, isDigit)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
-import Data.Regex.Applicative (Re, msym, some, sym)
+import Data.Regex.Applicative (Re, msym, some', sym)
 import Prelude (class Ring, id, negate, pure, (*), (+), (<$), (<$>), (<*>))
 
 
@@ -36,8 +36,8 @@ signed p = sign <*> p
 
 -- | Parse decimal number without sign.
 decimal :: Re Char Int
-decimal = foldl (\d i -> d * 10 + i) 0 <$> some digit
+decimal = foldl (\d i -> d * 10 + i) 0 <$> some' digit
 
 -- | Parse decimal number without sign.
 hexadecimal :: Re Char Int
-hexadecimal = foldl (\d i -> d * 16 + i) 0 <$> some hexDigit
+hexadecimal = foldl (\d i -> d * 16 + i) 0 <$> some' hexDigit
