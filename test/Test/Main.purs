@@ -7,7 +7,7 @@ import Control.Plus (empty)
 import Data.List.Lazy (List, fromFoldable, nil, (:))
 import Data.Maybe (Maybe(..), isJust)
 import Data.NonEmpty ((:|))
-import Data.Regex.Applicative (RE, few, findFirstInfix, findFirstPrefix, findLongestPrefix, many, str, sym, withMatched, (=~))
+import Data.Regex.Applicative (Re, few, findFirstInfix, findFirstPrefix, findLongestPrefix, many, str, sym, withMatched, (=~))
 import Data.String (toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
@@ -44,10 +44,10 @@ unABC (ABC c) = c
 
 -- Example Regexes
 
-re0 :: RE Char String
+re0 :: Re Char String
 re0 = (pure "uh" <* sym 'a') <> pure "mazing"
 
-re1 :: RE Char (Tuple Int Int)
+re1 :: Re Char (Tuple Int Int)
 re1 =
   let
     one = pure 1 <* sym 'a'
@@ -55,7 +55,7 @@ re1 =
   in
     Tuple <$> (one <|> two) <*> (two <|> one)
 
-re2 :: RE Char (Array Int)
+re2 :: Re Char (Array Int)
 re2 = sequence
   [ pure 1 <* sym 'a' <* sym 'a' <|>
       pure 2 <* sym 'a'
@@ -63,7 +63,7 @@ re2 = sequence
   , pure 4 <* sym 'b' <|>
       pure 5 <* sym 'a' ]
 
-re3 :: RE Char (List Int)
+re3 :: Re Char (List Int)
 re3 = sequence $ fromFoldable $
   [ pure 0 <|> pure 1
   , pure 1 <* sym 'a' <* sym 'a' <|>
@@ -74,13 +74,13 @@ re3 = sequence $ fromFoldable $
       pure 7 <|>
       pure 5 <* sym 'a' ]
 
-re4 :: RE Char (List Char)
+re4 :: Re Char (List Char)
 re4 = sym 'a' *> many (sym 'b') <* sym 'a'
 
-re5 :: RE Char (List Char)
+re5 :: Re Char (List Char)
 re5 = (sym 'a' <|> sym 'a' *> sym 'a') *> many (sym 'a')
 
-re6 :: RE Char (List Int)
+re6 :: Re Char (List Int)
 re6 = many (pure 3 <* sym 'a' <* sym 'a' <* sym 'a' <|> pure 1 <* sym 'a')
 
 data Quad a b c d = Quad a b c d
@@ -89,7 +89,7 @@ instance showQuad :: (Show a, Show b, Show c, Show d) => Show (Quad a b c d) whe
   show (Quad a b c d) = "Quad " <> show a <> show b <> show c <> show d
 
 -- Regular expression from the weighted regexp paper.
-re7 :: RE Char (Tuple (List (Quad (List Char) Char (List Char) Char)) (List Char))
+re7 :: Re Char (Tuple (List (Quad (List Char) Char (List Char) Char)) (List Char))
 re7 =
   let
     many_A_or_B = many (sym 'a' <|> sym 'b')
@@ -98,17 +98,17 @@ re7 =
         many (Quad <$> many_A_or_B <*> sym 'c' <*> many_A_or_B <*> sym 'c') <*>
         many_A_or_B
 
-re8 :: RE Char (Tuple (List Char) (List Char))
+re8 :: Re Char (Tuple (List Char) (List Char))
 re8 = Tuple <$> many (sym 'a' <|> sym 'b') <*> many (sym 'b' <|> sym 'c')
 
-re9 :: RE Char (List Char)
+re9 :: Re Char (List Char)
 re9 = many (sym 'a' <|> empty) <* sym 'b'
 
-re10 :: RE Char (List Char)
+re10 :: Re Char (List Char)
 re10 = few (sym 'a' <|> empty) <* sym 'b'
 
 prop :: forall b a. Eq b => Show a => Show b =>
-           RE a b ->
+           Re a b ->
            Array a ->
            Result
 prop re s = realResult ==? refResult where
@@ -118,7 +118,7 @@ prop re s = realResult ==? refResult where
 
 
 propMap :: forall c b a. Eq b => Show a => Show b =>
-           RE a b ->
+           Re a b ->
            (c -> a) ->
            Array c ->
            Result
@@ -137,7 +137,7 @@ prop_withMatched =
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
 -- we test that they agree
-testRecognitionAgainstParsing :: forall a b c. RE a b -> (c -> a) -> Array c -> Result
+testRecognitionAgainstParsing :: forall a b c. Re a b -> (c -> a) -> Array c -> Result
 testRecognitionAgainstParsing re f s =
   let
     fs = map f s

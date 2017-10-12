@@ -18,7 +18,7 @@ module Data.Regex.Applicative (
 
 import Data.Regex.Applicative.Types (
   Greediness(..)
-  , RE(..)
+  , Re
   , mkStar
 )
 import Data.Regex.Applicative.Interface (

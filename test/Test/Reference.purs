@@ -21,8 +21,8 @@ import Control.Plus (class Plus)
 import Data.Foldable (class Foldable)
 import Data.List.Lazy (List, filter, fromFoldable, head, nil, null, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
-import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), RE)
-import Data.Regex.Applicative.Types (elimRE)
+import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), Re)
+import Data.Regex.Applicative.Types (elimRe)
 import Data.Tuple (Tuple(..), fst, snd)
 import Debug.Trace (class DebugWarning, traceShow)
 import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (<<<), (<>))
@@ -69,16 +69,16 @@ char = P $ \s ->
     Nothing -> nil
     Just { head, tail } -> (Tuple head tail : nil)
 
-fromRE :: forall c a. RE c a -> P c a
-fromRE = elimRE {
+fromRe :: forall c a. Re c a -> P c a
+fromRe = elimRe {
   eps: pure
   , symbol: \_ p -> char >>= \c -> maybe empty pure $ p c
-  , alt: \a1 a2 -> fromRE a1 <|> fromRE a2
-  , app: \a1 a2 -> fromRE a1 <*> fromRE a2
-  , fmap: \f a -> f <$> fromRE a
+  , alt: \a1 a2 -> fromRe a1 <|> fromRe a2
+  , app: \a1 a2 -> fromRe a1 <*> fromRe a2
+  , map: \f a -> f <$> fromRe a
   , star: \g f b a ->
     let
-      am = fromRE a
+      am = fromRe a
       rep b' = flip combine (pure b') $ do
         a' <- am
         rep $ f b' a'
@@ -104,5 +104,5 @@ runP (P parse) s =
 -- |
 -- | However, this is not a very efficient implementation and is to be
 -- | used for testing only.
-reference :: forall c a t. Foldable t => RE c a -> t c -> Maybe a
-reference = runP <<< fromRE
+reference :: forall c a t. Foldable t => Re c a -> t c -> Maybe a
+reference = runP <<< fromRe

@@ -1,12 +1,12 @@
 module Data.Regex.Applicative.Types
   ( Greediness(..)
-  , RE
+  , Re
   , ThreadId(..)
   , mkApp
   , mkMap
   , mkSymbol
   , mkStar
-  , elimRE
+  , elimRe
 ) where
 
 import Control.Alt (class Alt, map, (<$>), (<|>))
@@ -19,7 +19,7 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
-import Prelude (class Applicative, class Apply, class Eq, class Functor, class Ord, class Semigroup, class Show, show, ($), (#), (<<<), (<>))
+import Prelude (class Applicative, class Apply, class Eq, class Functor, class Semigroup, class Show, show, (#), ($), (<<<), (<>))
 
 
 newtype ThreadId = ThreadId Int
@@ -28,7 +28,6 @@ derive instance newtypeThreadId :: Newtype ThreadId _
 data Greediness = Greedy | NonGreedy
 
 derive instance eqGreediness :: Eq Greediness
-derive instance ordGreediness :: Ord Greediness
 derive instance genericGreedines :: Generic Greediness _
 instance showGreediness :: Show Greediness where
   show = genericShow
@@ -65,29 +64,29 @@ instance showGreediness :: Show Greediness where
 -- |
 -- | * `some ra` matches concatenation of one or more strings matched by `ra`
 -- | and returns the list of `ra`'s return values on those strings.
-data RE c a =
+data Re c a =
   Eps a
   | Fail
   | Symbol ThreadId (c -> Maybe a)
-  | Alt (RE c a) (RE c a)
+  | Alt (Re c a) (Re c a)
   | App (Exists (Apped c a))
   | Star (Exists (Starred c a))
-  | Fmap (Exists (Mapped c a))
+  | Map (Exists (Mapped c a))
 
 -- we don't care about the intermediate type `b`,
 -- but it needs to be internally consistent.
-data Apped c a b = Apped (RE c (b -> a)) (RE c b)
-data Starred c a b = Starred Greediness (a -> b -> a) a (RE c b)
-data Mapped c a b = Mapped (b -> a) (RE c b)
+data Apped c a b = Apped (Re c (b -> a)) (Re c b)
+data Starred c a b = Starred Greediness (a -> b -> a) a (Re c b)
+data Mapped c a b = Mapped (b -> a) (Re c b)
 
-mkSymbol :: forall c r. ThreadId -> (c -> Maybe r) -> RE c r
+mkSymbol :: forall c r. ThreadId -> (c -> Maybe r) -> Re c r
 mkSymbol = Symbol
 
-mkApp :: forall c a b. RE c (a -> b) -> RE c a -> RE c b
+mkApp :: forall c a b. Re c (a -> b) -> Re c a -> Re c b
 mkApp rf ra = App $ mkExists $ Apped rf ra
 
-mkMap :: forall c a b. (a -> b) -> RE c a -> RE c b
-mkMap f r = Fmap $ mkExists $ Mapped f r
+mkMap :: forall c a b. (a -> b) -> Re c a -> Re c b
+mkMap f r = Map $ mkExists $ Mapped f r
 
 -- | Match zero or more instances of the given expression, which are combined using
 -- | the given folding function.
@@ -100,83 +99,83 @@ mkStar :: forall c a b.
           -> (a -> b -> a) -- folding function (like in foldl)
           -> a             -- the value for zero matches, and also the initial value
                            -- for the folding function
-          -> RE c b
-          -> RE c a
+          -> Re c b
+          -> Re c a
 mkStar g op z r = Star $ mkExists $ Starred g op z r
 
-type FoldRE c a r = {
+type FoldRe c a r = {
   eps :: a -> r
   , fail :: r
   , symbol :: ThreadId -> (c -> Maybe a) -> r
-  , alt :: RE c a -> RE c a -> r
-  , app :: forall b. RE c (b -> a) -> RE c b -> r
-  , star :: forall b. Greediness -> (a -> b -> a) -> a -> RE c b -> r
-  , fmap :: forall b. (b -> a) -> RE c b -> r
+  , alt :: Re c a -> Re c a -> r
+  , app :: forall b. Re c (b -> a) -> Re c b -> r
+  , star :: forall b. Greediness -> (a -> b -> a) -> a -> Re c b -> r
+  , map :: forall b. (b -> a) -> Re c b -> r
 }
 
--- | Eliminator for RE.
+-- | Eliminator for Re.
 -- | Can take some of the `runExists` cruft out of pattern matching.
-elimRE :: forall c a r. FoldRE c a r -> RE c a -> r
-elimRE elim re = case re of
+elimRe :: forall c a r. FoldRe c a r -> Re c a -> r
+elimRe elim re = case re of
   Eps a -> elim.eps a
   Fail -> elim.fail
   Symbol t p -> elim.symbol t p
   Alt a b -> elim.alt a b
   App x -> x # runExists \(Apped ff b) -> elim.app ff b
   Star x -> x # runExists \(Starred g op z re) -> elim.star g op z re
-  Fmap x -> x # runExists \(Mapped f x) -> elim.fmap f x
+  Map x -> x # runExists \(Mapped f x) -> elim.map f x
 
-instance functorRe :: Functor (RE c) where
-  map f = elimRE
+instance functorRe :: Functor (Re c) where
+  map f = elimRe
     { eps: \a -> Eps $ f a
     , fail: Fail
     , symbol: \t p -> Symbol t (map f <$> p)
     , alt: \a b -> f <$> a <|> f <$> b
     , app: \a b -> (map f) <$> a <*> b
     , star: \g op z r -> mkMap f $ mkStar g op z r
-    , fmap: \g r -> mkMap (f <<< g) r
+    , map: \g r -> mkMap (f <<< g) r
     }
 
-instance applyRe :: Apply (RE c) where
+instance applyRe :: Apply (Re c) where
   apply = mkApp
 
-instance applicativeRe :: Applicative (RE c) where
+instance applicativeRe :: Applicative (Re c) where
   pure = Eps
 
-instance altRe :: Alt (RE c) where
+instance altRe :: Alt (Re c) where
   alt = Alt
 
-instance plusRe :: Plus (RE c) where
+instance plusRe :: Plus (Re c) where
   empty = Fail
 
-instance alternativeRe :: Alternative (RE c)
+instance alternativeRe :: Alternative (Re c)
 
-instance semigroupRe :: Semigroup a => Semigroup (RE c a) where
+instance semigroupRe :: Semigroup a => Semigroup (Re c a) where
   append = lift2 (<>)
 
-instance profunctorRe :: Profunctor RE where
+instance profunctorRe :: Profunctor Re where
   dimap g f r = f <$> cmap g r where
     -- contravariant map
-    cmap :: forall a b c. (a -> b) -> RE b c -> RE a c
+    cmap :: forall a b c. (a -> b) -> Re b c -> Re a c
     cmap g' = go where
-      go :: forall d. RE b d -> RE a d
-      go = elimRE {
+      go :: forall d. Re b d -> Re a d
+      go = elimRe {
           eps:              Eps
           , fail:           Fail
           , symbol: \i p    -> Symbol i (p <<< g')  -- <-- g' used
           , alt: \r1 r2     -> go r1 <|> go r2
           , app: \r1 r2     -> go r1 <*> go r2
           , star: \g op z r -> mkStar g op z (go r)
-          , fmap: \f' r     -> f' <$> go r
+          , map: \f' r     -> f' <$> go r
         }
 
-instance showRE :: Show (RE c a) where
-  show = elimRE {
+instance showRe :: Show (Re c a) where
+  show = elimRe {
     eps: \_ -> "Eps a?"
     , fail: "Fail"
     , symbol: \_ _ -> "Symbol i? p?"
     , app: \f x -> "App (" <> show f <> ") (" <> show x <> ")"
     , alt: \a b -> "Alt (" <> show a <> ") (" <> show b <> ")"
     , star: \g _ a r -> "Star " <> show g <> " op? a? (" <> show r <> ")"
-    , fmap: \_ b -> "Fmap f? (" <> show b <> ")"
+    , map: \_ b -> "Map f? (" <> show b <> ")"
   }
