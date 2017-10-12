@@ -2,24 +2,28 @@ module Data.Regex.Applicative.Interface where
 
 import Control.Alternative (empty, pure, (<|>))
 import Control.Apply (lift2)
+import Data.Array as A
 import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Compile (Thread, emptyRe, addThread, compile, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), Re, ThreadId(..), elimRe, mkStar, mkSymbol)
-import Data.String (toCharArray)
+import Data.String (fromCharArray, joinWith, toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
 import Data.Unfoldable (class Unfoldable)
 import Prelude (class Eq, Ordering(GT), compare, flip, map, not, ($), (&&), (+), (<$>), (<*>), (<<<), (<>), (==))
 
 
-star :: forall c a. Greediness -> Re c a -> Re c (List a)
-star g a = reverse <$> mkStar g (flip (:)) nil a
+star :: forall c a. Greediness -> Re c a -> Re c (Array a)
+star g a = (A.fromFoldable <<< reverse) <$> mkStar g (flip (:)) nil a
 
 -- | `(v)*`. Matches `v` 0 or more times.
-many :: forall c a. Re c a -> Re c (List a)
+many :: forall c a. Re c a -> Re c (Array a)
 many = star Greedy
+
+manyStr :: Re Char String -> Re Char String
+manyStr re = joinWith "" <$> many re
 
 -- | Match zero or more instances of the given expression, but as
 -- | few of them as possible (i.e. /non-greedily/). A greedy equivalent of 'few'
@@ -33,12 +37,12 @@ many = star Greedy
 -- |     findFirstPrefix (many anySym  <* "b") "ababab"
 -- |     -- Just ("ababa","")
 -- | ```
-few :: forall c a. Re c a -> Re c (List a)
+few :: forall c a. Re c a -> Re c (Array a)
 few = star NonGreedy
 
 -- | `(v)+`.  Matches `v` 1 or more times.
-some :: forall c a. Re c a -> Re c (List a)
-some v = (:) <$> v <*> many v
+some :: forall c a. Re c a -> Re c (Array a)
+some v = A.(:) <$> v <*> many v
 
 -- | Match and return a single symbol which satisfies the predicate
 psym :: forall c. (c -> Boolean) -> Re c c
@@ -62,21 +66,21 @@ anySym = msym Just
 arr :: forall a t. Eq a => Traversable t => t a -> Re a (t a)
 arr = traverse sym
 
-str :: String -> Re Char (List Char)
-str s = fromFoldable <$> (arr $ toCharArray s)
+str :: String -> Re Char String
+str s = fromCharArray <$> (arr $ toCharArray s)
 
 
 -- | Return matched symbols as part of the return value
-withMatched :: forall c a. Re c a -> Re c (Tuple (List c) a)
+withMatched :: forall c a. Re c a -> Re c (Tuple (Array c) a)
 withMatched = go where
   go = elimRe {
-    eps: \a -> Tuple nil <$> pure a
+    eps: \a -> Tuple [] <$> pure a
     , fail: empty
-    , symbol: \i p -> mkSymbol i (\c -> Tuple (c : nil) <$> p c)
+    , symbol: \i p -> mkSymbol i (\c -> Tuple ([c]) <$> p c)
     , alt: \a b -> withMatched a <|> withMatched b
     , app: \a b -> lift2 (<*>) (withMatched a) (withMatched b)
     , map: \f x -> second f <$> withMatched x
-    , star: \g op z x -> mkStar g (lift2 op) (Tuple nil z) (withMatched x)
+    , star: \g op z x -> mkStar g (lift2 op) (Tuple [] z) (withMatched x)
   }
 
 -- | @s =~ a = match a s@
@@ -130,8 +134,8 @@ match re = let obj = compile re in
 -- |    -- Nothing
 -- | ```
 findFirstPrefix :: forall c a t. Foldable t =>
-                   Re c a -> t c -> Maybe (Tuple a (List c))
-findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
+                   Re c a -> t c -> Maybe (Tuple a (Array c))
+findFirstPrefix re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s) Nothing
   where
   walk obj lst = case uncons lst of
     Nothing -> Tuple obj Nothing
@@ -176,8 +180,8 @@ findFirstPrefix re s = go (compile re) (fromFoldable s) Nothing
 -- |    -- Just (Tuple (Right ('i' : 'f' : 'f' : 'o' : 'o' : nil)) nil)
 -- | ```
 findLongestPrefix :: forall c a t. Foldable t =>
-                     Re c a -> t c -> Maybe (Tuple a (List c))
-findLongestPrefix re s = go (compile re) (fromFoldable s) Nothing
+                     Re c a -> t c -> Maybe (Tuple a (Array c))
+findLongestPrefix re s = map A.fromFoldable <$> go (compile re) (fromFoldable s) Nothing
   where
   go obj s' resOld =
     let res = (map (flip Tuple s') $ head $ results obj) <|> resOld
@@ -205,10 +209,10 @@ findShortestPrefix re s = go (compile re) (fromFoldable s)
 -- | Otherwise behaves like 'findFirstPrefix'. Returns the result together with
 -- | the prefix and suffix of the string surrounding the match.
 findFirstInfix :: forall c a t. Foldable t =>
-                  Re c a -> t c -> Maybe (Tuple (List c) (Tuple a (List c)))
+                  Re c a -> t c -> Maybe (Tuple (Array c) (Tuple a (Array c)))
 findFirstInfix re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
-  findFirstPrefix (Tuple <$> few anySym <*> re) (fromFoldable s)
+  findFirstPrefix (Tuple <$> few anySym <*> re) (A.fromFoldable s)
 
 -- | Auxiliary function for findExtremeInfix
 prefixCounter :: forall c. Re c (Tuple Int (List c))
@@ -330,3 +334,6 @@ replace r xs = toUnfoldable $ go (fromFoldable xs) nil where
     Nothing -> \zs -> ys <> zs
     Just (Tuple before (Tuple m rest)) -> \zs ->
       before <> (fromFoldable m) <> (go rest zs)
+
+replaceStr :: Re Char String -> String -> String
+replaceStr r s = fromCharArray $ replace (toCharArray <$> r) $ toCharArray s

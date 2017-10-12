@@ -1,17 +1,18 @@
 module Test.Main where
 
-import Control.Alt ((<|>))
+import Control.Alt ((<$), (<|>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Gen (elements)
 import Control.Plus (empty)
-import Data.List.Lazy (List, fromFoldable, nil, (:))
+import Data.List.Lazy (List, fromFoldable)
 import Data.Maybe (Maybe(..), isJust)
 import Data.NonEmpty ((:|))
 import Data.Regex.Applicative (Re, few, findFirstInfix, findFirstPrefix, findLongestPrefix, many, str, sym, withMatched, (=~))
-import Data.String (toCharArray)
+import Data.Regex.Applicative.Interface (manyStr, replaceStr)
+import Data.String (fromCharArray, toCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Show, Unit, discard, join, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
+import Prelude (class Eq, class Show, Unit, discard, map, pure, show, unit, ($), (*>), (+), (<$>), (<*), (<*>), (<>))
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
@@ -74,13 +75,13 @@ re3 = sequence $ fromFoldable $
       pure 7 <|>
       pure 5 <* sym 'a' ]
 
-re4 :: Re Char (List Char)
+re4 :: Re Char (Array Char)
 re4 = sym 'a' *> many (sym 'b') <* sym 'a'
 
-re5 :: Re Char (List Char)
+re5 :: Re Char (Array Char)
 re5 = (sym 'a' <|> sym 'a' *> sym 'a') *> many (sym 'a')
 
-re6 :: Re Char (List Int)
+re6 :: Re Char (Array Int)
 re6 = many (pure 3 <* sym 'a' <* sym 'a' <* sym 'a' <|> pure 1 <* sym 'a')
 
 data Quad a b c d = Quad a b c d
@@ -89,7 +90,7 @@ instance showQuad :: (Show a, Show b, Show c, Show d) => Show (Quad a b c d) whe
   show (Quad a b c d) = "Quad " <> show a <> show b <> show c <> show d
 
 -- Regular expression from the weighted regexp paper.
-re7 :: Re Char (Tuple (List (Quad (List Char) Char (List Char) Char)) (List Char))
+re7 :: Re Char (Tuple (Array (Quad (Array Char) Char (Array Char) Char)) (Array Char))
 re7 =
   let
     many_A_or_B = many (sym 'a' <|> sym 'b')
@@ -98,13 +99,13 @@ re7 =
         many (Quad <$> many_A_or_B <*> sym 'c' <*> many_A_or_B <*> sym 'c') <*>
         many_A_or_B
 
-re8 :: Re Char (Tuple (List Char) (List Char))
+re8 :: Re Char (Tuple (Array Char) (Array Char))
 re8 = Tuple <$> many (sym 'a' <|> sym 'b') <*> many (sym 'b' <|> sym 'c')
 
-re9 :: Re Char (List Char)
+re9 :: Re Char (Array Char)
 re9 = many (sym 'a' <|> empty) <* sym 'b'
 
-re10 :: Re Char (List Char)
+re10 :: Re Char (Array Char)
 re10 = few (sym 'a' <|> empty) <* sym 'b'
 
 prop :: forall b a. Eq b => Show a => Show b =>
@@ -128,11 +129,11 @@ propMap re f s = prop re $ map f s
 prop_withMatched :: Array AB -> Result
 prop_withMatched =
   let
-    re = withMatched $ many (str "a" <|> str "ba")
+    re = withMatched $ manyStr (str "a" <|> str "ba")
   in
     \s -> case map unAB s =~ re of
       Nothing -> Success
-      Just (Tuple x y) -> x ==? join y
+      Just (Tuple x y) -> fromCharArray x ==? y
 
 
 -- Because we have 2 slightly different algorithms for recognition and parsing,
@@ -149,7 +150,7 @@ main :: forall e. Eff (QCRunnerEffects e) Unit
 main = run [consoleReporter] $ do
   describe "Tests" $ do
     describe "Fixtures" $ do
-      let a1 = 'a' : nil
+      let a1 = ['a']
       it "re0" $ quickCheck' 1 $ (a1 =~ re0) ==? reference re0 a1
       it "re9" $ quickCheck' 1 $ (a1 =~ re9) ==? reference re9 a1
     describe "Matching vs reference" $ do
@@ -180,27 +181,27 @@ main = run [consoleReporter] $ do
       describe "findFirstPrefix" $ do
         it "t1" $ quickCheck' 1 $
           findFirstPrefix (str "a" <|> str "ab") (toCharArray "abc") ==?
-          Just (Tuple ('a' : nil) ('b' : 'c' : nil))
+          Just (Tuple "a" ['b', 'c'])
         it "t2" $ quickCheck' 1 $
           findFirstPrefix (str "ab" <|> str "a") (toCharArray "abc") ==?
-          Just (Tuple ('a' : 'b' : nil) ('c' : nil))
+          Just (Tuple "ab" ['c'])
         it "t3" $ quickCheck' 1 $
           findFirstPrefix (str "bc") (toCharArray "abc") ==?
           Nothing
       describe "findFirstInfix" $ do
         it "t1" $ quickCheck' 1 $
           (findFirstInfix (str "a" <|> str "ab") (toCharArray "tabc")) ==?
-          (Just (Tuple ('t' : nil) (Tuple ('a' : nil) ('b' : 'c' : nil))))
+          (Just (Tuple ['t'] (Tuple "a" ['b', 'c'])))
         it "t2" $ quickCheck' 1 $
           (findFirstInfix (str "ab" <|> str "a") (toCharArray "tabc")) ==?
-          (Just (Tuple ('t' : nil) (Tuple ('a' : 'b' : nil) ('c' : nil))))
+          (Just (Tuple ['t'] (Tuple "ab" ['c'])))
       describe "findLongestPrefix" $ do
         it "t1" $ quickCheck' 1 $
           (findLongestPrefix (str "a" <|> str "ab") (toCharArray "abc")) ==?
-          (Just (Tuple ('a' : 'b' : nil) ('c' : nil)))
+          (Just (Tuple "ab" ['c']))
         it "re9" $ quickCheck' 1 $
           (findLongestPrefix re9 (toCharArray "abc")) ==?
-          (Just (Tuple ('a' : nil) ('c' : nil)))
+          (Just (Tuple ['a'] ['c']))
       --   it "t2" $ quickCheck $
       --       (findLongestPrefix ("ab" <|> "a") "abc") ==?
       --       (Just (Tuple "ab" "c"))
@@ -237,16 +238,16 @@ main = run [consoleReporter] $ do
       --   it "t3" $ quickCheck $
       --       (findShortestInfix "bc" "tabc") ==?
       --       (Just (Tuple "ta" (Tuple "bc" "")))
-      -- describe "replace" $ do
-      --   it "t1" $ quickCheck $
-      --       (replace ("x" <$ "a" <|> "y" <$ "ab") "tabc") ==?
-      --       "tyc"
-      --   it "t2" $ quickCheck $
-      --       (replace ("y" <$ "ab" <|> "x" <$ "a") "tabc") ==?
-      --       "tyc"
-      --   it "t3" $ quickCheck $
-      --       (replace ("x" <$ "bc") "tabc") ==?
-      --       "tax"
-      --   it "t4" $ quickCheck $
-      --       (replace ("y" <$ "a" <|> "x" <$ "ab") "tacabc") ==?
-      --       "tycxc"
+      describe "replace" $ do
+        it "t1" $ quickCheck $
+            (replaceStr ("x" <$ str "a" <|> "y" <$ str "ab") "tabc") ==?
+            "tyc"
+        it "t2" $ quickCheck $
+            (replaceStr ("y" <$ str "ab" <|>  "x" <$ str "a") "tabc") ==?
+            "tyc"
+        it "t3" $ quickCheck $
+            (replaceStr ("x" <$ str "bc") "tabc") ==?
+            "tax"
+        it "t4" $ quickCheck $
+            (replaceStr ("y" <$ str "a" <|> "x" <$ str "ab") "tacabc") ==?
+            "tycxc"
