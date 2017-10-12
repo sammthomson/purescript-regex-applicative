@@ -19,28 +19,45 @@ module Data.Regex.Applicative (
 import Data.Regex.Applicative.Types (
   Greediness(..)
   , Re
-  , mkStar
 )
 import Data.Regex.Applicative.Interface (
-  sym
+  -- functions on Strings
+  (=~)
+  , sym
   , psym
   , msym
   , anySym
   , str
   , few
-  , some'
-  , some
-  , many'
-  , many
-  , withMatched
-  , match'
-  , match
-  , (=~)
-  , replace
   , findFirstPrefix
   , findLongestPrefix
   , findShortestPrefix
   , findFirstInfix
   , findLongestInfix
   , findShortestInfix
+  , many
+  , match
+  , matchFlipped
+  , replace
+  , some
+  , withMatched
+  -- functions on sequences
+  , (=~~)
+  , sym'
+  , psym'
+  , anySym'
+  , seq
+  , few'
+  , findFirstPrefix'
+  , findLongestPrefix'
+  , findShortestPrefix'
+  , findFirstInfix'
+  , findLongestInfix'
+  , findShortestInfix'
+  , many'
+  , match'
+  , matchFlipped'
+  , replace'
+  , some'
+  , withMatched'
 )
