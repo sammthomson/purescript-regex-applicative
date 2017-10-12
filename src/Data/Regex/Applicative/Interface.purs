@@ -1,12 +1,12 @@
 module Data.Regex.Applicative.Interface where
 
-import Control.Alternative (pure, (<|>))
+import Control.Alternative (empty, pure, (<|>))
 import Control.Apply (lift2)
 import Data.List.Lazy (List, foldl, fromFoldable, head, init, nil, reverse, toUnfoldable, uncons, (:))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Profunctor.Strong (second)
 import Data.Regex.Applicative.Compile (Thread, emptyRe, addThread, compile, failed, fromThreads, getResult, results, step, threads)
-import Data.Regex.Applicative.Types (Greediness(..), RE(..), ThreadId(..), elimRE, mkStar)
+import Data.Regex.Applicative.Types (Greediness(..), RE, ThreadId(..), elimRE, mkStar, mkSymbol)
 import Data.String (toCharArray)
 import Data.Traversable (class Foldable, class Traversable, traverse)
 import Data.Tuple (Tuple(Tuple))
@@ -48,7 +48,7 @@ psym p = msym (\c -> if p c then Just c else Nothing)
 -- | original symbol
 -- 0 is a place-holder. will be renumbered during compilation
 msym :: forall c a. (c -> Maybe a) -> RE c a
-msym p = Symbol (ThreadId 0) p
+msym p = mkSymbol (ThreadId 0) p
 
 -- | Match and return the given symbol
 sym :: forall c. Eq c => c -> RE c c
@@ -71,8 +71,8 @@ withMatched :: forall c a. RE c a -> RE c (Tuple (List c) a)
 withMatched = go where
   go = elimRE {
     eps: \a -> Tuple nil <$> pure a
-    , fail: Fail
-    , symbol: \i p -> Symbol i (\c -> Tuple (c : nil) <$> p c)
+    , fail: empty
+    , symbol: \i p -> mkSymbol i (\c -> Tuple (c : nil) <$> p c)
     , alt: \a b -> withMatched a <|> withMatched b
     , app: \a b -> lift2 (<*>) (withMatched a) (withMatched b)
     , fmap: \f x -> second f <$> withMatched x

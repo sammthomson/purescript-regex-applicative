@@ -1,15 +1,15 @@
-module Data.Regex.Applicative.Types (
-  Greediness(..),
-  RE(..),
-  ThreadId(..),
-  Mapped(..),
-  Apped(..),
-  Starred(..),
-  mkStar,
-  elimRE
+module Data.Regex.Applicative.Types
+  ( Greediness(..)
+  , RE
+  , ThreadId(..)
+  , mkApp
+  , mkMap
+  , mkSymbol
+  , mkStar
+  , elimRE
 ) where
 
-import Control.Alt (class Alt, (<$>), (<|>))
+import Control.Alt (class Alt, map, (<$>), (<|>))
 import Control.Alternative (class Alternative, (<*>))
 import Control.Apply (lift2)
 import Control.Plus (class Plus)
@@ -80,16 +80,14 @@ data Apped c a b = Apped (RE c (b -> a)) (RE c b)
 data Starred c a b = Starred Greediness (a -> b -> a) a (RE c b)
 data Mapped c a b = Mapped (b -> a) (RE c b)
 
-instance showRE :: Show (RE c a) where
-  show = elimRE {
-    eps: \_ -> "Eps a?"
-    , fail: "Fail"
-    , symbol: \_ _ -> "Symbol i? p?"
-    , app: \f x -> "App (" <> show f <> ") (" <> show x <> ")"
-    , alt: \a b -> "Alt (" <> show a <> ") (" <> show b <> ")"
-    , star: \g _ a r -> "Star " <> show g <> " op? a? (" <> show r <> ")"
-    , fmap: \_ b -> "Fmap f? (" <> show b <> ")"
-  }
+mkSymbol :: forall c r. ThreadId -> (c -> Maybe r) -> RE c r
+mkSymbol = Symbol
+
+mkApp :: forall c a b. RE c (a -> b) -> RE c a -> RE c b
+mkApp rf ra = App $ mkExists $ Apped rf ra
+
+mkMap :: forall c a b. (a -> b) -> RE c a -> RE c b
+mkMap f r = Fmap $ mkExists $ Mapped f r
 
 -- | Match zero or more instances of the given expression, which are combined using
 -- | the given folding function.
@@ -129,10 +127,18 @@ elimRE elim re = case re of
   Fmap x -> x # runExists \(Mapped f x) -> elim.fmap f x
 
 instance functorRe :: Functor (RE c) where
-  map f x = Fmap $ mkExists $ Mapped f x
+  map f = elimRE
+    { eps: \a -> Eps $ f a
+    , fail: Fail
+    , symbol: \t p -> Symbol t (map f <$> p)
+    , alt: \a b -> f <$> a <|> f <$> b
+    , app: \a b -> (map f) <$> a <*> b
+    , star: \g op z r -> mkMap f $ mkStar g op z r
+    , fmap: \g r -> mkMap (f <<< g) r
+    }
 
 instance applyRe :: Apply (RE c) where
-  apply mf mx = App $ mkExists $ Apped mf mx
+  apply = mkApp
 
 instance applicativeRe :: Applicative (RE c) where
   pure = Eps
@@ -163,3 +169,14 @@ instance profunctorRe :: Profunctor RE where
           , star: \g op z r -> mkStar g op z (go r)
           , fmap: \f' r     -> f' <$> go r
         }
+
+instance showRE :: Show (RE c a) where
+  show = elimRE {
+    eps: \_ -> "Eps a?"
+    , fail: "Fail"
+    , symbol: \_ _ -> "Symbol i? p?"
+    , app: \f x -> "App (" <> show f <> ") (" <> show x <> ")"
+    , alt: \a b -> "Alt (" <> show a <> ") (" <> show b <> ")"
+    , star: \g _ a r -> "Star " <> show g <> " op? a? (" <> show r <> ")"
+    , fmap: \_ b -> "Fmap f? (" <> show b <> ")"
+  }

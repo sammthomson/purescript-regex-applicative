@@ -20,7 +20,7 @@ import Data.Foldable (foldl)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, singleton)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Regex.Applicative.StateQueue as SQ
-import Data.Regex.Applicative.Types (Greediness(..), RE(Symbol), ThreadId(..), elimRE, mkStar)
+import Data.Regex.Applicative.Types (Greediness(..), RE, ThreadId(..), elimRE, mkSymbol, mkStar)
 import Prelude (class Functor, flip, ($), (+), (<$>), (<<<), (>>>))
 
 
@@ -137,7 +137,7 @@ renumber e =
     go = elimRE
       { eps: \a -> pure $ pure a
       , fail: pure empty
-      , symbol: \_ p -> flip Symbol p <$> fresh  -- <-- fresh
+      , symbol: \_ p -> flip mkSymbol p <$> fresh  -- <-- fresh
       , alt: \a1 a2 -> (<|>) <$> go a1 <*> go a2
       , app: \a1 a2 -> (<*>) <$> go a1 <*> go a2
       , star: \g f b a -> mkStar g f b <$> go a
