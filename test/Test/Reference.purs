@@ -1,15 +1,10 @@
 --------------------------------------------------------------------
 -- |
--- Module  : Text.Regex.Applicative.Reference
--- Copyright : (c) Roman Cheplyaka
--- License   : MIT
---
--- Maintainer: Roman Cheplyaka <roma@ro-che.info>
--- Stability : experimental
---
--- Reference implementation (using backtracking).
---
--- This is exposed for testing purposes only!
+-- | Module  : Test.Reference
+-- | Copyright : (c) Roman Cheplyaka, 2011; Sam Thomson, 2017.
+-- | License   : MIT
+-- |
+-- | Reference implementation (using backtracking).
 --------------------------------------------------------------------
 
 module Test.Reference where

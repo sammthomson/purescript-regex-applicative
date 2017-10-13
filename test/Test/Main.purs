@@ -1,3 +1,11 @@
+--------------------------------------------------------------------
+-- |
+-- | Module  : Test.Main
+-- | Copyright : (c) Roman Cheplyaka, 2011; Sam Thomson, 2017.
+-- | License   : MIT
+-- |
+-- | Tests for `Data.Regex.Applicative`.
+--------------------------------------------------------------------
 module Test.Main where
 
 import Control.Alt ((<|>))
@@ -21,6 +29,9 @@ import Test.Spec (describe, it)
 import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
+import Test.StateQueue (stateQueueTests)
+import Test.Url (urlTest)
+-- import Test.Expression (expressionTests)
 
 
 -- Small alphabets
@@ -103,11 +114,10 @@ testMatchVsRef :: forall c b a. Eq b => Show b => Newtype c a =>
               Re a b ->
               Array c ->
               Result
-testMatchVsRef _ re s = prop re $ map unwrap s where
-  prop re s = realResult ==? refResult where
-    fs = fromFoldable s
-    refResult = reference re fs
-    realResult = match' re fs
+testMatchVsRef _ re s = realResult ==? refResult where
+  s' = map unwrap $ fromFoldable s
+  refResult = reference re s'
+  realResult = match' re s'
 
 testWithMatched :: Re Char String -> Array AB -> Result
 testWithMatched re s =
@@ -120,6 +130,13 @@ main :: forall e. Eff (QCRunnerEffects e) Unit
 main = run [consoleReporter] $ do
   let check = quickCheck' 1
   describe "Tests" $ do
+    describe "Url test" $ do
+      urlTest
+    describe "StateQueue" do
+      stateQueueTests
+    -- FIXME: infinite loop:
+    -- describe "Expression" $ do
+    --   expressionTests
     describe "Properties" $ do
       describe "Matching vs reference" $ do
         it "re0"  $ quickCheck $ testMatchVsRef A re0

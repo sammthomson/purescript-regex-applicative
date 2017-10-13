@@ -14,8 +14,7 @@ import Control.Alternative (class Alternative, (<*>))
 import Control.Apply (lift2)
 import Control.Plus (class Plus)
 import Data.Exists (Exists, mkExists, runExists)
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Show (genericShow)
+import Data.Generic (class Generic, gShow)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Profunctor (class Profunctor)
@@ -28,9 +27,8 @@ derive instance newtypeThreadId :: Newtype ThreadId _
 data Greediness = Greedy | NonGreedy
 
 derive instance eqGreediness :: Eq Greediness
-derive instance genericGreedines :: Generic Greediness _
-instance showGreediness :: Show Greediness where
-  show = genericShow
+derive instance genericGreedines :: Generic Greediness
+instance showGreediness :: Show Greediness where show = gShow
 
 -- | Type of regular expressions that recognize symbols of type `c` and
 -- | produce a result of type `a`.

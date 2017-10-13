@@ -1,7 +1,8 @@
 MIT License
 
 Copyright for portions of project purescript-regex-applicative are held by
-Roman Cheplyaka, 2011 as part of project regex-applicative. All other copyright
+Roman Cheplyaka, 2011 as part of project regex-applicative
+(http://hackage.haskell.org/package/regex-applicative). All other copyright
 for project purescript-regex-applicative are held by Sam Thomson, 2017.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

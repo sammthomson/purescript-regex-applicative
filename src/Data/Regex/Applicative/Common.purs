@@ -17,12 +17,12 @@ import Data.Regex.Applicative (Re, msym, some', sym)
 import Prelude (class Ring, id, negate, pure, (*), (+), (<$), (<$>), (<*>))
 
 
--- | Decimal digit, i.e. @\'0\'@..@\'9\'@
+-- | Decimal digit, i.e. `'0'`..`'9'`
 digit :: Re Char Int
 digit = msym (\c -> if isDigit c then digitToInt c else Nothing)
 
 -- | Hexadecimal digit
--- | i.e. @\'0\'@..@\'9\'@, @\'a\'@..@\'f\'@, @\'A\'@..@\'F\'@.
+-- | i.e. `'0'`..`'9'`, `'a'`..`'f'`, `'A'`..`'F'`.
 hexDigit :: Re Char Int
 hexDigit = msym digitToInt
 
