@@ -149,15 +149,16 @@ str s = fromCharArray <$> (seq $ toCharArray s)
 -- | Generalized version of `withMatched` that works on `Foldable`s of symbols.
 withMatched' :: forall c a. Re c a -> Re c (Tuple (Array c) a)
 withMatched' = go where
-  go = elimRe {
-    eps: \a -> Tuple [] <$> pure a
+  go :: forall c' r. Re c' r -> Re c' (Tuple (Array c') r)
+  go = elimRe
+    { eps: \a -> Tuple [] <$> pure a
     , fail: empty
-    , symbol: \i p -> mkSymbol i (\c -> Tuple ([c]) <$> p c)
-    , alt: \a b -> withMatched' a <|> withMatched' b
-    , app: \a b -> lift2 (<*>) (withMatched' a) (withMatched' b)
-    , map: \f x -> second f <$> withMatched' x
-    , star: \g op z x -> mkStar g (lift2 op) (Tuple [] z) (withMatched' x)
-  }
+    , symbol: \i p -> mkSymbol i (\c -> Tuple [c] <$> p c)
+    , alt: \a b -> go a <|> go b
+    , app: \a b -> lift2 (<*>) (go a) (go b)
+    , star: \g op z x -> mkStar g (lift2 op) (Tuple [] z) (go x)
+    , map: \f x -> second f <$> go x
+    }
 
 -- | Return matched string as part of the return value
 withMatched :: forall a. Re Char a -> Re Char (Tuple String a)

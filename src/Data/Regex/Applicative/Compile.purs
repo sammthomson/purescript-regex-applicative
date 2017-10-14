@@ -12,16 +12,17 @@ module Data.Regex.Applicative.Compile
   , addThread
   ) where
 
-import Control.Applicative (pure, (<*), (<*>))
+import Control.Applicative (map, pure, (<*), (<*>))
 import Control.Monad.Cont (ContT(..), runContT)
 import Control.Monad.State (State, evalState, gets, modify)
 import Control.Plus (empty, (<|>))
 import Data.Foldable (foldl)
 import Data.List.Lazy (List, fromFoldable, mapMaybe, nil, null, singleton)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Data.Regex.Applicative.StateQueue as SQ
 import Data.Regex.Applicative.Types (Greediness(..), Re, ThreadId(..), elimRe, mkSymbol, mkStar)
-import Prelude (class Functor, flip, ($), (+), (<$>), (<<<), (>>>))
+import Data.Tuple (Tuple(..))
+import Prelude (class Functor, class Semigroup, bind, flip, ($), (+), (<$>))
 
 
 -- | A `Thread` is an intermediate state in the process of
@@ -95,37 +96,61 @@ addThread (CompiledRe q) t = CompiledRe $
     Accept _ -> SQ.insert t q
     Thread { threadId: ThreadId i } -> SQ.insertUnique i t q
 
+
+-- During parsing we need to remember if a result is due to an empty
+-- match or a non-empty match, otherwise a Star whose inner regex matches
+-- epsilon will loop forever.
+type Result r = Tuple MaybeEmpty r
+
+data MaybeEmpty = Empty | NotEmpty
+
+instance semigroupEmpty :: Semigroup MaybeEmpty where
+  append Empty x = x  -- only Empty if both are Empty
+  append NotEmpty _ = NotEmpty
+
 -- | Compile a regular expression into a non-deterministic state machine.
 compile :: forall c r. Re c r -> CompiledRe c r
 compile e = fromThreads $ runGo (renumber e) accept where
-  accept r = singleton (Accept r)
-  runGo :: forall a. Re c a -> (a -> List (Thread c r)) -> List (Thread c r)
+  accept (Tuple _ r) = singleton (Accept r)  -- base case
+
+  runGo :: forall a. Re c a -> (Result a -> List (Thread c r)) -> List (Thread c r)
   runGo r = runContT $ go r
+
   -- | Builds a `CompiledRe` using continuation passing style.
   -- | Given a regex `re` and continuation `k`, `go` compiles `r` into a list
   -- | of threads, but replaces `Accept r` states with `k r`.
-  go :: forall a. Re c a -> ContT (Thread c r) List a
+  go :: forall a. Re c a -> ContT (Thread c r) List (Result a)
   go = elimRe
-    { eps: pure
+    { eps: \a -> pure $ Tuple Empty a
     , fail: ContT \_ -> nil
     , symbol: \i p ->
         ContT \k -> singleton $ Thread
           { threadId: i
-          , step: p >>> maybe emptyRe (fromThreads <<< k)
+          , step: \c -> case p c of
+              Nothing -> emptyRe
+              Just a -> fromThreads $ k $ Tuple NotEmpty a
           }
-    , alt: \r1 r2 -> ContT $ (<|>) <$> runGo r1 <*> runGo r2  -- uses applyFn
-    , app: \r1 r2 -> go r1 <*> go r2
+    , alt: \ra rb -> ContT $ (<|>) <$> runGo ra <*> runGo rb  -- uses applyFn
+    , app: \rf ra -> do
+        f <- go rf
+        a <- go ra
+        pure $ f <*> a  -- uses applyTuple
     , star: \g op z r ->
         let
-          rAndThen = runGo r
+          rThen = runGo r
           or = case g of
             Greedy -> flip (<|>)
             NonGreedy -> (<|>)
-          -- either eps or `r r*`, Greedy prefers the latter.
-          star a k = k a `or` rAndThen \b -> star (a `op` b) k
+          star a k =
+            k a  -- match `r` zero times
+            `or`
+            rThen case _ of  -- match `r` at least once
+              Tuple Empty _ -> nil  -- we don't allow `r` to empty match
+              b -> star (op <$> a <*> b) k  -- uses applyTuple
         in
-          ContT $ star z
-    , map: \f r -> f <$> go r }
+          ContT $ star (Tuple Empty z)
+    , map: \f r -> map f <$> go r
+    }
 
 -- | Give each `Symbol` node a unique `ThreadId`.
 renumber :: forall c r. Re c r -> Re c r

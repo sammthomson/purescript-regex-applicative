@@ -31,7 +31,7 @@ import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 import Test.StateQueue (stateQueueTests)
 import Test.Url (urlTest)
--- import Test.Expression (expressionTests)
+import Test.Expression (expressionTests)
 
 
 -- Small alphabets
@@ -135,8 +135,8 @@ main = run [consoleReporter] $ do
     describe "StateQueue" do
       stateQueueTests
     -- FIXME: infinite loop:
-    -- describe "Expression" $ do
-    --   expressionTests
+    describe "Expression" $ do
+      expressionTests
     describe "Properties" $ do
       describe "Matching vs reference" $ do
         it "re0"  $ quickCheck $ testMatchVsRef A re0

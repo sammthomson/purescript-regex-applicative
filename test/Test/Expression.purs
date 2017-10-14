@@ -46,13 +46,14 @@ lexemes :: Re Char (Array Lexeme)
 lexemes = catMaybes <$> many' ((Just <$> lexeme) <|> (Nothing <$ space))
 
 expressionTests :: forall e. Spec (random :: RANDOM | e) Unit
-expressionTests =
+expressionTests = do
   it "fixture" $ quickCheck' 1 $ \(_ :: Unit) ->
     ("a + 2*b - 3/c" =~ lexemes) ==?
       Just
         [ Identifier "a"
         , Op '+'
         , Number 2
+        , Op '*'
         , Identifier "b"
         , Op '-'
         , Number 3
