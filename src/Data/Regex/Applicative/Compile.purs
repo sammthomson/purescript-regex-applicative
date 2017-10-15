@@ -71,7 +71,7 @@ threads (CompiledRe sq) = fromFoldable sq
 -- | threads come from the same `CompiledRe`, unless you know what you're doing.
 -- | However, it should be safe to filter out or rearrange threads.
 fromThreads :: forall c r. List (Thread c r) -> CompiledRe c r
-fromThreads ts = foldl addThread emptyRe ts
+fromThreads ts = foldl (flip addThread) emptyRe ts
 
 -- | Check if the `CompiledRe` has no threads, in which case it will never match.
 failed :: forall c r. CompiledRe c r -> Boolean
@@ -84,15 +84,15 @@ results obj = mapMaybe getResult $ threads obj
 -- | Feed a symbol into a `CompiledRe`.
 step :: forall c r. CompiledRe c r -> c -> CompiledRe c r
 step (CompiledRe sq) c = foldl op emptyRe $ sq where
-  op acc t = foldl addThread acc $ threads $ stepThread t c
+  op acc t = foldl (flip addThread) acc $ threads $ stepThread t c
 
 -- | Add a thread to a `CompiledRe`. The new thread will have lower priority than the
 -- | threads which are already in the `CompiledRe`.
 -- | If a thread with the same id already exists in the queue, the
 -- | `CompiledRe` is not changed.
-addThread :: forall c r. CompiledRe c r -> Thread c r -> CompiledRe c r
-addThread (CompiledRe q) t = CompiledRe $
-  case t of
+addThread :: forall c r. Thread c r -> CompiledRe c r -> CompiledRe c r
+addThread t (CompiledRe q) =
+  CompiledRe $ case t of
     Accept _ -> SQ.insert t q
     Thread { threadId: ThreadId i } -> SQ.insertUnique i t q
 

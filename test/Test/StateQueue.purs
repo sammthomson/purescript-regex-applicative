@@ -18,7 +18,7 @@ import Data.Regex.Applicative.StateQueue (StateQueue, empty, getElements, insert
 import Data.Tuple (Tuple(..))
 import Prelude (Unit, discard, show, ($), (+), (-), (<$>), (<<<), (<>), (==), (||))
 import Test.QuickCheck (class Arbitrary, arbitrary, (/=?), (<?>), (==?))
-import Test.Spec (Spec, describe, it)
+import Test.Spec (Spec, it)
 import Test.Spec.QuickCheck (quickCheck)
 
 size :: forall a. StateQueue a -> Int

@@ -202,31 +202,37 @@ match re s = match' re (toCharArray s)
 
 -- | Generalized version of `findFirstPrefix` that works on `Foldable`s.
 findFirstPrefix' :: forall c a t. Foldable t =>
-                   Re c a -> t c -> Maybe (Tuple a (Array c))
-findFirstPrefix' re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s) Nothing
-  where
-  walk obj lst = case uncons lst of
-    Nothing -> Tuple obj Nothing
-    Just { head, tail } ->
-      case getResult head of
-        Just r -> Tuple obj $ Just r
-        Nothing -> walk (addThread obj head) tail
+                    Re c a -> t c -> Maybe (Tuple a (List c))
+findFirstPrefix' re s = go (compile re) (fromFoldable s) Nothing where
+  -- `r` is the current state.
+  -- `s'` is remaining string left to match.
+  -- `oldResult` is the current best match.
+  go r s' oldResult =
+    case walk emptyRe $ threads r of
+      Tuple r' newResult ->
+        let  -- prefer newer results (they come from higher priority threads)
+          res = (flip Tuple s' <$> newResult) <|> oldResult
+        in case uncons s' of
+          -- continue over rest of string, using only higher priority threads
+          Just { head, tail } | not (failed r') -> go (step r' head) tail res
+          _ -> res
 
-  go obj s' resOld =
-    case walk emptyRe $ threads obj of
-      (Tuple obj' resThis) ->
-        let
-          res = ((flip Tuple s') <$> resThis) <|> resOld
-        in
-          case uncons s' of
-            _ | failed obj' -> res
-            Nothing -> res
-            Just { head, tail } -> go (step obj' head) tail res
+  -- `walk` searches through the list of `Threads` `ts` for an `Accept r`.
+  -- If one is found then `r` is returned, along with all higher priority
+  -- threads (which could still potentially match a longer prefix).
+  -- Lower priority threads can be safely discarded at that point.
+  walk higherPriority ts =
+    case uncons ts of
+      Nothing -> Tuple higherPriority Nothing
+      Just { head, tail } ->
+        case getResult head of
+          Just r -> Tuple higherPriority (Just r)
+          Nothing -> walk (addThread head higherPriority) tail
 
 -- | Find a string prefix which is matched by the regular expression.
 -- |
 -- | Of all matching prefixes, pick one using left bias (prefer the left part of
--- | '<|>' to the right part) and greediness.
+-- | '<|>' to the right part), breaking ties by Greediness (longer/shorter).
 -- |
 -- | This is the match which a backtracking engine (such as Perl's one) would find
 -- | first.
@@ -248,20 +254,24 @@ findFirstPrefix' re s = (map A.fromFoldable) <$> go (compile re) (fromFoldable s
 -- |    -- Nothing
 -- | ```
 findFirstPrefix :: forall a. Re Char a -> String -> Maybe (Tuple a String)
-findFirstPrefix re s = map fromCharArray <$> findFirstPrefix' re (toCharArray s)
+findFirstPrefix re s =
+  map (fromCharArray <<< A.fromFoldable) <$> findFirstPrefix' re (toCharArray s)
 
 -- | Generalized version of `findLongestPrefix` that works on `Foldable`s of symbols.
 findLongestPrefix' :: forall c a t. Foldable t =>
-                     Re c a -> t c -> Maybe (Tuple a (Array c))
-findLongestPrefix' re s = map A.fromFoldable <$> go (compile re) (fromFoldable s) Nothing
-  where
-  go obj s' resOld =
-    let res = (map (flip Tuple s') $ head $ results obj) <|> resOld
-    in
-      case uncons s' of
-        _ | failed obj -> res
-        Nothing -> res
-        Just { head, tail } -> go (step obj head) tail res
+                      Re c a ->
+                      t c ->
+                      Maybe (Tuple a (Array c))
+findLongestPrefix' re s =
+  map A.fromFoldable <$> go (compile re) (fromFoldable s) Nothing where
+    go r s' oldRes =
+      let
+        newRes = flip Tuple s' <$> head (results r)
+        res = newRes <|> oldRes  -- prefer new result
+      in
+        case uncons s' of
+          Just { head, tail } | not (failed r) -> go (step r head) tail res
+          _  -> res
 
 -- | Find the longest string prefix which is matched by the regular expression.
 -- |
@@ -291,29 +301,32 @@ findLongestPrefix re s = map fromCharArray <$> findLongestPrefix' re (toCharArra
 
 -- | Generalized version of `findShortestPrefix` that works on `Foldable`s of symbols.
 findShortestPrefix' :: forall c a t. Foldable t =>
-                      Re c a -> t c -> Maybe (Tuple a (List c))
-findShortestPrefix' re s = go (compile re) (fromFoldable s)
-  where
-  go obj s' =
-    case uncons $ results obj of
+                      Re c a ->
+                      t c ->
+                      Maybe (Tuple a (List c))
+findShortestPrefix' re s = go (compile re) (fromFoldable s) where
+  go r s' =
+    case uncons (results r) of
       Just { head } -> Just (Tuple head s')
-      _ | failed obj -> Nothing
+      _ | failed r -> Nothing
       _ ->
         case uncons s' of
           Nothing -> Nothing
-          Just { head, tail } -> go (step obj head) tail
+          Just { head, tail } -> go (step r head) tail
 
 -- | Find the shortest prefix (analogous to 'findLongestPrefix')
 findShortestPrefix :: forall a. Re Char a -> String -> Maybe (Tuple a String)
 findShortestPrefix re s = convert <$> (findShortestPrefix' re $ toCharArray s) where
-  convert (Tuple a xs) = Tuple a $ fromCharArray $ A.fromFoldable xs
+  convert = map (fromCharArray <<< A.fromFoldable)
 
 -- | Generalized version of `findFirstInfix` that works on `Foldable`s of symbols.
 findFirstInfix' :: forall c a t. Foldable t =>
-                  Re c a -> t c -> Maybe (Tuple (Array c) (Tuple a (Array c)))
+                  Re c a ->
+                  t c ->
+                  Maybe (Tuple (Array c) (Tuple a (List c)))
 findFirstInfix' re s =
   map (\(Tuple (Tuple first res) last) -> Tuple first (Tuple res last)) $
-  findFirstPrefix' (Tuple <$> few' anySym' <*> re) (A.fromFoldable s)
+  findFirstPrefix' (Tuple <$> few' anySym' <*> re) s
 
 -- | Find the leftmost substring that is matched by the regular expression.
 -- | Otherwise behaves like 'findFirstPrefix'. Returns the result together with
@@ -394,17 +407,17 @@ findExtremalInfix newOrOld re s =
     GotResult r ->
       Just (Tuple (r.prefixStr) (Tuple (r.result) (r.postfixStr)))
   where
-    go obj s' resOld =
+    go obj s' old =
       let
         resThis = foldl
             (\acc t -> acc `preferOver` mkInfixMatchingState s' t)
             NoResult $
             threads obj
-        res = resThis `newOrOld` resOld
+        res = resThis `newOrOld` old
         obj' =
           -- If we just found the first result, kill the "prefixCounter" thread.
           -- We rely on the fact that it is the last thread of the object.
-          if gotResult resThis && not (gotResult resOld)
+          if gotResult resThis && not (gotResult old)
             then fromMaybe obj $ fromThreads <$> (init $ threads obj)
             else obj
       in

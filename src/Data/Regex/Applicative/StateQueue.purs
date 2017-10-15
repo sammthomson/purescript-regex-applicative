@@ -52,7 +52,7 @@ empty = StateQueue {
 
 -- | Insert an element in the state queue, unless there is already an element with the same key
 insertUnique :: forall a.
-                Int -- ^ key
+                Int -- key
                 -> a
                 -> StateQueue a
                 -> StateQueue a
