@@ -18,6 +18,7 @@ import Data.List.Lazy (List, filter, fromFoldable, head, nil, null, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), Re)
 import Data.Regex.Applicative.Types (elimRe)
+import Data.SeqLike (class SeqLike, toList)
 import Data.Tuple (Tuple(..), fst, snd)
 import Debug.Trace (class DebugWarning, traceShow)
 import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (<<<), (<>))
@@ -99,5 +100,5 @@ runP (P parse) s =
 -- |
 -- | However, this is not a very efficient implementation and is to be
 -- | used for testing only.
-reference :: forall c a t. Foldable t => Re c a -> t c -> Maybe a
-reference = runP <<< fromRe
+reference :: forall c s r. SeqLike s c => Re c r -> s -> Maybe r
+reference r s = runP (fromRe r) (toList s)

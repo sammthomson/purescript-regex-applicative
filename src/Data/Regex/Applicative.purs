@@ -21,13 +21,10 @@ import Data.Regex.Applicative.Types (
   , Re
 )
 import Data.Regex.Applicative.Interface (
-  -- functions on Strings
-  (=~)
-  , sym
-  , psym
-  , msym
+  InfixMatch(..)
+  , (=~)
+  , anySingleton
   , anySym
-  , str
   , few
   , findFirstPrefix
   , findLongestPrefix
@@ -35,29 +32,19 @@ import Data.Regex.Applicative.Interface (
   , findFirstInfix
   , findLongestInfix
   , findShortestInfix
+  , foldFew
+  , foldMany
+  , foldSome
   , many
   , match
   , matchFlipped
+  , msym
+  , pSingleton
+  , psym
   , replace
+  , singleton
+  , str
   , some
+  , sym
   , withMatched
-  -- functions on sequences
-  , (=~~)
-  , sym'
-  , psym'
-  , anySym'
-  , seq
-  , few'
-  , findFirstPrefix'
-  , findLongestPrefix'
-  , findShortestPrefix'
-  , findFirstInfix'
-  , findLongestInfix'
-  , findShortestInfix'
-  , many'
-  , match'
-  , matchFlipped'
-  , replace'
-  , some'
-  , withMatched'
 )

@@ -5,7 +5,7 @@ import Control.Alt ((<|>))
 import Control.Monad.Eff.Random (RANDOM)
 import Data.Generic (class Generic, gShow)
 import Data.Maybe (Maybe(..))
-import Data.Regex.Applicative (Re, anySym, many, psym, str, sym, (=~))
+import Data.Regex.Applicative (Re, anySingleton, foldMany, pSingleton, str, sym, (=~))
 import Prelude (class Eq, class Show, Unit, ($), (/=), (<$), (<$>), (<*), (<*>))
 import Test.QuickCheck ((==?))
 import Test.Spec (Spec, it)
@@ -32,10 +32,10 @@ derive instance gUrl :: Generic Url
 instance showUrl :: Show Url where show = gShow
 
 host :: Re Char Host
-host = many $ psym $ ((/=) '/')
+host = foldMany $ pSingleton $ ((/=) '/')
 
 url :: Re Char Url
-url = Url <$> protocol <* str "://" <*> host <* sym '/' <*> many anySym
+url = Url <$> protocol <* str "://" <*> host <* sym '/' <*> foldMany anySingleton
 
 urlTest :: forall e. Spec (random :: RANDOM | e) Unit
 urlTest =

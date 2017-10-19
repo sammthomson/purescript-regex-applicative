@@ -12,17 +12,17 @@ import Control.Alt ((<|>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Gen (elements)
 import Control.Plus (empty)
-import Data.List.Lazy (List, fromFoldable)
+import Data.List (List, fromFoldable)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.NonEmpty ((:|))
-import Data.Regex.Applicative (Re, few, findFirstInfix, findFirstPrefix, findLongestInfix, findLongestPrefix, findShortestInfix, findShortestPrefix, many, str, sym, withMatched, (=~))
-import Data.Regex.Applicative.Interface (many', match', replace, sym', (=~~))
+import Data.Regex.Applicative
 import Data.String (fromCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested (Tuple4, tuple4)
 import Prelude (class Eq, class Show, Unit, discard, map, pure, ($), (*>), (+), (<$>), (<$), (<*), (<*>), (<>))
+import Test.Expression (expressionTests)
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
@@ -31,7 +31,6 @@ import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 import Test.StateQueue (stateQueueTests)
 import Test.Url (urlTest)
-import Test.Expression (expressionTests)
 
 
 -- Small alphabets
@@ -82,32 +81,34 @@ re3 = sequence $ fromFoldable $
       pure 5 <* sym 'a' ]
 
 re4 :: Re Char String
-re4 = sym 'a' *> many (sym 'b') <* sym 'a'
+re4 = sym 'a' *> foldMany (singleton 'b') <* sym 'a'
 
 re5 :: Re Char String
-re5 = (sym 'a' <|> sym 'a' *> sym 'a') *> many (sym 'a')
+re5 = (sym 'a' <|> sym 'a' *> sym 'a') *> foldMany (singleton 'a')
 
-re6 :: Re Char (Array Int)
-re6 = many' (pure 3 <* sym 'a' <* sym 'a' <* sym 'a' <|> pure 1 <* sym 'a')
+re6 :: Re Char (List Int)
+re6 = many (pure 3 <* sym 'a' <* sym 'a' <* sym 'a'
+            <|> pure 1 <* sym 'a')
 
 -- Regular expression from the weighted regexp paper.
-re7 :: Re Char (Tuple (Array (Tuple4 String Char String Char)) String)
+re7 :: Re Char (Tuple (List (Tuple4 String Char String Char)) String)
 re7 =
-  let manyAOrB = many (sym 'a' <|> sym 'b')
-  in Tuple <$> many' (tuple4 <$> manyAOrB
-                             <*> sym' 'c'
-                             <*> manyAOrB
-                             <*> sym' 'c')
+  let manyAOrB = foldMany (singleton 'a' <|> singleton 'b')
+  in Tuple <$> many (tuple4 <$> manyAOrB
+                            <*> sym 'c'
+                            <*> manyAOrB
+                            <*> sym 'c')
            <*> manyAOrB
 
 re8 :: Re Char (Tuple String String)
-re8 = Tuple <$> many (sym 'a' <|> sym 'b') <*> many (sym 'b' <|> sym 'c')
+re8 = Tuple <$> foldMany (singleton 'a' <|> singleton 'b')
+            <*> foldMany (singleton 'b' <|> singleton 'c')
 
 re9 :: Re Char String
-re9 = many (sym 'a' <|> empty) <* sym 'b'
+re9 = foldMany (singleton 'a' <|> empty) <* sym 'b'
 
 re10 :: Re Char String
-re10 = few (sym 'a' <|> empty) <* sym 'b'
+re10 = foldFew (singleton 'a' <|> empty) <* sym 'b'
 
 testMatchVsRef :: forall c b a. Eq b => Show b => Newtype c a =>
               (a -> c) ->  -- constructor (ignored, just to specify Newtype)
@@ -117,7 +118,7 @@ testMatchVsRef :: forall c b a. Eq b => Show b => Newtype c a =>
 testMatchVsRef _ re s = realResult ==? refResult where
   s' = map unwrap $ fromFoldable s
   refResult = reference re s'
-  realResult = match' re s'
+  realResult = match re s'
 
 testWithMatched :: Re Char String -> Array AB -> Result
 testWithMatched re s =
@@ -151,12 +152,11 @@ main = run [consoleReporter] $ do
         it "re9"  $ quickCheck $ testMatchVsRef AB re9
         it "re10" $ quickCheck $ testMatchVsRef AB re10
       describe "withMatched" $ do
-        it "withMatched" $ quickCheck $ testWithMatched (many (str "a" <|> str "ba"))
+        it "withMatched" $ quickCheck $ testWithMatched (foldMany (str "a" <|> str "ba"))
     describe "Fixtures" $ do
       describe "Matching vs reference" $ do
-        let a1 = ['a']
-        it "re0" $ check $ (a1 =~~ re0) ==? reference re0 a1
-        it "re9" $ check $ (a1 =~~ re9) ==? reference re9 a1
+        it "re0" $ check $ ("a" =~ re0) ==? reference re0 "a"
+        it "re9" $ check $ ("a" =~ re9) ==? reference re9 "a"
       describe "findFirstPrefix" $ do
         it "t1" $ check $
           findFirstPrefix (str "a" <|> str "ab") "abc" ==?
@@ -190,33 +190,33 @@ main = run [consoleReporter] $ do
       describe "findLongestInfix" $ do
         it "t1" $ check $
           (findLongestInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Tuple "t" (Tuple "ab" "c")))
+            (Just (Match { before: "t", result:  "ab", after: "c" }))
         it "t2" $ check $
           (findLongestInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Tuple "t" (Tuple "ab" "c")))
+            (Just (Match { before: "t", result: "ab", after: "c" }))
         it "t3" $ check $
           (findLongestInfix (str "bc") "tabc") ==?
-            (Just (Tuple "ta" (Tuple "bc" "")))
+            (Just (Match { before: "ta", result: "bc", after: "" }))
       describe "findShortestPrefix" $ do
         it "t1" $ check $
           (findShortestPrefix (str "a" <|> str "ab") "abc") ==?
-            (Just (Tuple "a" "bc"))
+            (Just (Match { before: "", result: "a", after: "bc" }))
         it "t2" $ check $
           (findShortestPrefix (str "ab" <|> str "a") "abc") ==?
-            (Just (Tuple "a" "bc"))
+            (Just (Match { before: "", result: "a", after:  "bc" }))
         it "t3" $ check $
           (findShortestPrefix (str "bc") "abc") ==?
             Nothing
       describe "findShortestInfix" $ do
         it "t1" $ check $
           (findShortestInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Tuple "t" (Tuple "a" "bc")))
+            (Just (Match { before: "t", result: "a", after: "bc" }))
         it "t2" $ check $
           (findShortestInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Tuple "t" (Tuple "a" "bc")))
+            (Just (Match { before:  "t", result: "a", after: "bc" }))
         it "t3" $ check $
           (findShortestInfix (str "bc") "tabc") ==?
-            (Just (Tuple "ta" (Tuple "bc" "")))
+            (Just (Match { before:  "ta", result: "bc", after: "" }))
       describe "replace" $ do
         it "t1" $ check $
           (replace ("x" <$ str "a" <|> "y" <$ str "ab") "tabc") ==?

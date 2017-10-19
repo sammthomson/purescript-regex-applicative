@@ -3,12 +3,12 @@ module Test.Expression where
 
 import Control.Alt ((<|>))
 import Control.Monad.Eff.Random (RANDOM)
-import Data.Array (catMaybes)
 import Data.Char.Unicode (isAlpha, isAlphaNum, isSpace)
 import Data.Generic (class Generic, gShow)
+import Data.List (List, catMaybes, fromFoldable)
 import Data.Maybe (Maybe(..))
 import Data.NonEmpty (foldl1, (:|))
-import Data.Regex.Applicative (Re, many, many', psym, sym, sym', (=~))
+import Data.Regex.Applicative (Re, foldMany, many, pSingleton, sym, (=~))
 import Data.Regex.Applicative.Common (decimal)
 import Prelude (class Eq, class Show, Unit, map, ($), (<$), (<$>), (<>))
 import Test.QuickCheck ((==?))
@@ -27,13 +27,13 @@ instance showv :: Show Lexeme where show = gShow
 derive instance eqLexeme :: Eq Lexeme
 
 op :: Re Char Char
-op = foldl1 (<|>) $ map sym' $ '*' :| ['/', '-', '+']
+op = foldl1 (<|>) $ map sym $ '*' :| ['/', '-', '+']
 
 identifier :: Re Char String
-identifier = psym isAlpha <> many (psym isAlphaNum)
+identifier = pSingleton isAlpha <> foldMany(pSingleton isAlphaNum)
 
 space :: Re Char String
-space = many $ psym isSpace
+space = foldMany$ pSingleton isSpace
 
 lexeme :: Re Char Lexeme
 lexeme = (Number <$> decimal)
@@ -42,14 +42,14 @@ lexeme = (Number <$> decimal)
           <|> (LParen <$ sym '(')
           <|> (RParen <$ sym ')')
 
-lexemes :: Re Char (Array Lexeme)
-lexemes = catMaybes <$> many' ((Just <$> lexeme) <|> (Nothing <$ space))
+lexemes :: Re Char (List Lexeme)
+lexemes = catMaybes <$> many ((Just <$> lexeme) <|> (Nothing <$ space))
 
 expressionTests :: forall e. Spec (random :: RANDOM | e) Unit
 expressionTests = do
   it "fixture" $ quickCheck' 1 $ \(_ :: Unit) ->
     ("a + 2*b - 3/c" =~ lexemes) ==?
-      Just
+      (Just $ fromFoldable
         [ Identifier "a"
         , Op '+'
         , Number 2
@@ -59,4 +59,4 @@ expressionTests = do
         , Number 3
         , Op '/'
         , Identifier "c"
-        ]
+        ])
