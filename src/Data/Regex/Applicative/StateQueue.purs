@@ -1,5 +1,12 @@
--- | This internal module is exposed only for testing and benchmarking. You
--- | don't need to import it.
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.StateQueue
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Internal module for keeping a priority queue of states.
+--------------------------------------------------------------------
 module Data.Regex.Applicative.StateQueue
   ( StateQueue
   , empty

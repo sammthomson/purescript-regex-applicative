@@ -1,4 +1,14 @@
-module Data.SeqLike where
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.SeqLike
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Typeclass so that `String`, `List Char`, `Array Char`. etc.
+-- | can all be matched by regexes.
+--------------------------------------------------------------------
+module Data.Regex.Applicative.SeqLike where
 
 import Data.Array as A
 import Data.Foldable (class Foldable)

@@ -1,3 +1,12 @@
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.Interface
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | User-facing API for constructing and matching regexes.
+--------------------------------------------------------------------
 module Data.Regex.Applicative.Interface (
   InfixMatch(..)
   , (=~)
@@ -42,8 +51,8 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.Profunctor.Strong (first)
 import Data.Regex.Applicative.Compile (addThread, compile, emptyRe, failed, fromThreads, getResult, results, step, threads)
 import Data.Regex.Applicative.Types (Greediness(..), Re, ThreadId(..), elimRe, mkStar, mkSymbol)
-import Data.SeqLike (class SeqLike, Seq(..), fromList, fromSeq, length, toList, toSeq)
-import Data.SeqLike as Seq
+import Data.Regex.Applicative.SeqLike (class SeqLike, Seq(..), fromList, fromSeq, length, toList, toSeq)
+import Data.Regex.Applicative.SeqLike as Seq
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 

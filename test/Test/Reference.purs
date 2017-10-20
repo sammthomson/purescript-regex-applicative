@@ -6,7 +6,6 @@
 -- |
 -- | Reference implementation (using backtracking).
 --------------------------------------------------------------------
-
 module Test.Reference where
 
 import Control.Alternative (class Alt, class Alternative, empty, pure, (<$>), (<*>), (<|>))
@@ -18,7 +17,7 @@ import Data.List.Lazy (List, filter, fromFoldable, head, nil, null, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
 import Data.Regex.Applicative (Re)
 import Data.Regex.Applicative.Types (Greediness(..), elimRe)
-import Data.SeqLike (class SeqLike, toList)
+import Data.Regex.Applicative.SeqLike (class SeqLike, toList)
 import Data.Tuple (Tuple(..), fst, snd)
 import Prelude (class Functor, bind, const, flip, ($), (<<<), (<>))
 

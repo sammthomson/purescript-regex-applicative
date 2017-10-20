@@ -1,3 +1,12 @@
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.Compile
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Internal module for compiling regexes into automata.
+--------------------------------------------------------------------
 module Data.Regex.Applicative.Compile
   ( Thread
   , CompiledRe

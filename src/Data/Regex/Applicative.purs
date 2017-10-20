@@ -1,16 +1,11 @@
 --------------------------------------------------------------------
 -- |
--- Module    : Data.Regex.Applicative
--- Copyright : (c) Roman Cheplyaka
--- License   : MIT
---
--- Maintainer: Roman Cheplyaka <roma@ro-che.info>
--- Stability : experimental
---
--- To get started, see some examples on the wiki:
--- <https://github.com/feuerbach/regex-applicative/wiki/Examples>
+-- | Module    : Data.Regex.Applicative
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
 --------------------------------------------------------------------
-
 module Data.Regex.Applicative (
   module Data.Regex.Applicative.Types
   , module Data.Regex.Applicative.Interface

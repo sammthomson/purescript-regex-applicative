@@ -1,4 +1,12 @@
--- | Adapted from http://stackoverflow.com/questions/7882512/pcre-in-haskell-what-where-how/7902344#7902344.
+--------------------------------------------------------------------
+-- |
+-- | Module    : Test.Url
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Test adapted from http://stackoverflow.com/questions/7882512/pcre-in-haskell-what-where-how/7902344#7902344.
+--------------------------------------------------------------------
 module Test.Url where
 
 import Control.Alt ((<|>))

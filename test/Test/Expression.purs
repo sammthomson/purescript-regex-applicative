@@ -1,4 +1,12 @@
--- adapted from https://github.com/feuerbach/regex-applicative/wiki/Examples
+--------------------------------------------------------------------
+-- |
+-- | Module    : Test.Expression
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Test adapted from https://github.com/feuerbach/regex-applicative/wiki/Examples
+--------------------------------------------------------------------
 module Test.Expression where
 
 import Control.Alt ((<|>))

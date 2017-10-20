@@ -1,12 +1,12 @@
 --------------------------------------------------------------------
 -- |
--- | Module  : Test.StateQueue
--- | Copyright : (c) Roman Cheplyaka, 2011; Sam Thomson, 2017.
+-- | Module    : Test.StateQueue
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
 -- | License   : MIT
 -- |
 -- | Tests for `Data.Regex.Applicative.StateQueue`.
 --------------------------------------------------------------------
-
 module Test.StateQueue where
 
 import Control.Monad.Eff.Random (RANDOM)

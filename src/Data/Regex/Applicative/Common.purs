@@ -1,4 +1,12 @@
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.Common
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
 -- | Collection of commonly used regular expressions.
+--------------------------------------------------------------------
 module Data.Regex.Applicative.Common (
   -- * Digits
   digit,

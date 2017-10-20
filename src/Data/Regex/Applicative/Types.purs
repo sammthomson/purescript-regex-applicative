@@ -1,3 +1,12 @@
+--------------------------------------------------------------------
+-- |
+-- | Module    : Data.Regex.Applicative.Types
+-- | Copyright : (c) Sam Thomson, 2017
+-- | Copyright : (c) Roman Cheplyaka, 2011
+-- | License   : MIT
+-- |
+-- | Regex data structure and instances.
+--------------------------------------------------------------------
 module Data.Regex.Applicative.Types
   ( Greediness(..)
   , Re
