@@ -8,6 +8,7 @@
 --------------------------------------------------------------------
 module Test.Main where
 
+import Prelude
 import Control.Alt ((<|>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Gen (elements)
@@ -21,7 +22,6 @@ import Data.String (fromCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested (Tuple4, tuple4)
-import Prelude (class Eq, class Show, Unit, discard, map, pure, ($), (*>), (+), (<$>), (<$), (<*), (<*>), (<>))
 import Test.Expression (expressionTests)
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
@@ -160,30 +160,30 @@ main = run [consoleReporter] $ do
       describe "findFirstPrefix" $ do
         it "t1" $ check $
           findFirstPrefix (str "a" <|> str "ab") "abc" ==?
-            Just (Tuple "a" "bc")
+            Just (Match { before: "", result: "a", after: "bc" })
         it "t2" $ check $
           findFirstPrefix (str "ab" <|> str "a") "abc" ==?
-            Just (Tuple "ab" "c")
+            Just (Match { before: "", result: "ab", after: "c" })
         it "t3" $ check $
           findFirstPrefix (str "bc") "abc" ==?
             Nothing
       describe "findFirstInfix" $ do
         it "t1" $ check $
           (findFirstInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Tuple "t" (Tuple "a" "bc")))
+            (Just (Match { before: "t", result:  "a", after: "bc" }))
         it "t2" $ check $
           (findFirstInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Tuple "t" (Tuple "ab" "c")))
+            (Just (Match { before: "t", result: "ab", after: "c" }))
       describe "findLongestPrefix" $ do
         it "t1" $ check $
           (findLongestPrefix (str "a" <|> str "ab") "abc") ==?
-            (Just (Tuple "ab" "c"))
+            (Just (Match { before: "", result: "ab", after: "c" }))
         it "re9" $ check $
           (findLongestPrefix re9 "abc") ==?
-            (Just (Tuple "a" "c"))
+            (Just (Match { before: "", result: "a", after: "c" }))
         it "t2" $ check $
           (findLongestPrefix (str "ab" <|> str "a") "abc") ==?
-            (Just (Tuple "ab" "c"))
+            (Just (Match { before: "", result: "ab", after: "c" }))
         it "t3" $ check $
           (findLongestPrefix (str "bc") "abc") ==?
             Nothing

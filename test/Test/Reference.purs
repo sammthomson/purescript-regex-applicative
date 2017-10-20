@@ -16,12 +16,11 @@ import Control.Plus (class Plus)
 import Data.Foldable (class Foldable)
 import Data.List.Lazy (List, filter, fromFoldable, head, nil, null, uncons, (:))
 import Data.Maybe (Maybe(..), maybe)
-import Data.Regex.Applicative (Greediness(NonGreedy, Greedy), Re)
-import Data.Regex.Applicative.Types (elimRe)
+import Data.Regex.Applicative (Re)
+import Data.Regex.Applicative.Types (Greediness(..), elimRe)
 import Data.SeqLike (class SeqLike, toList)
 import Data.Tuple (Tuple(..), fst, snd)
-import Debug.Trace (class DebugWarning, traceShow)
-import Prelude (class Functor, class Show, Unit, bind, const, flip, unit, ($), (<<<), (<>))
+import Prelude (class Functor, bind, const, flip, ($), (<<<), (<>))
 
 
 -- | A parsing monad. Accepts a List of symbols and returns a List of pairs of
@@ -85,9 +84,6 @@ fromRe = elimRe {
       rep b
   , fail: empty
 }
-
-spyShow :: forall a. DebugWarning => Show a => (Unit -> a) -> a
-spyShow f = let r = f unit in traceShow r $ pure r
 
 runP :: forall c a t. Foldable t => P c a -> t c -> Maybe a
 runP (P parse) s =

@@ -17,8 +17,7 @@ module Data.Regex.Applicative (
 ) where
 
 import Data.Regex.Applicative.Types (
-  Greediness(..)
-  , Re
+  Re
 )
 import Data.Regex.Applicative.Interface (
   InfixMatch(..)
