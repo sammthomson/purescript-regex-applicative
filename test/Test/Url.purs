@@ -9,15 +9,13 @@
 --------------------------------------------------------------------
 module Test.Url where
 
+import Prelude
 import Control.Alt ((<|>))
-import Control.Monad.Eff.Random (RANDOM)
 import Data.Generic (class Generic, gShow)
 import Data.Maybe (Maybe(..))
 import Data.Regex.Applicative (Re, anySingleton, foldMany, pSingleton, str, sym, (=~))
-import Prelude (class Eq, class Show, Unit, ($), (/=), (<$), (<$>), (<*), (<*>))
-import Test.QuickCheck ((==?))
 import Test.Spec (Spec, it)
-import Test.Spec.QuickCheck (quickCheck')
+import Test.Spec.Assertions (shouldEqual)
 
 
 data Protocol = Http | Ftp
@@ -45,8 +43,7 @@ host = foldMany $ pSingleton $ ((/=) '/')
 url :: Re Char Url
 url = Url <$> protocol <* str "://" <*> host <* sym '/' <*> foldMany anySingleton
 
-urlTest :: forall e. Spec (random :: RANDOM | e) Unit
-urlTest =
-  it "url" $ quickCheck' 1 $
-    ("http://stackoverflow.com/questions" =~ url) ==?
-      (Just (Url Http "stackoverflow.com" "questions"))
+urlTest :: forall e. Spec e Unit
+urlTest = it "url" $
+  ("http://stackoverflow.com/questions" =~ url) `shouldEqual`
+    Just (Url Http "stackoverflow.com" "questions")

@@ -9,6 +9,27 @@
 module Test.Main where
 
 import Prelude
+
+import Data.Regex.Applicative
+  ( InfixMatch(..)
+  , Re
+  , findFirstInfix
+  , findFirstPrefix
+  , findLongestInfix
+  , findLongestPrefix
+  , findShortestInfix
+  , findShortestPrefix
+  , foldFew
+  , foldMany
+  , many
+  , match
+  , replace
+  , singleton
+  , str
+  , sym
+  , withMatched
+  , (=~)
+  )
 import Control.Alt ((<|>))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Gen (elements)
@@ -17,16 +38,16 @@ import Data.List (List, fromFoldable)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.NonEmpty ((:|))
-import Data.Regex.Applicative
 import Data.String (fromCharArray)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested (Tuple4, tuple4)
-import Test.Expression (expressionTests)
+import Test.Expression (expressionTest)
 import Test.QuickCheck (class Arbitrary, Result(..), (==?))
 import Test.Reference (reference)
 import Test.Spec (describe, it)
-import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck, quickCheck')
+import Test.Spec.Assertions (shouldEqual)
+import Test.Spec.QuickCheck (QCRunnerEffects, quickCheck)
 import Test.Spec.Reporter (consoleReporter)
 import Test.Spec.Runner (run)
 import Test.StateQueue (stateQueueTests)
@@ -128,16 +149,14 @@ testWithMatched re s =
 
 
 main :: forall e. Eff (QCRunnerEffects e) Unit
-main = run [consoleReporter] $ do
-  let check = quickCheck' 1
+main = run [consoleReporter] $
   describe "Tests" $ do
+    describe "StateQueue tests" do
+      stateQueueTests
     describe "Url test" $ do
       urlTest
-    describe "StateQueue" do
-      stateQueueTests
-    -- FIXME: infinite loop:
-    describe "Expression" $ do
-      expressionTests
+    describe "Expression test" $ do
+      expressionTest
     describe "Properties" $ do
       describe "Matching vs reference" $ do
         it "re0"  $ quickCheck $ testMatchVsRef A re0
@@ -151,82 +170,85 @@ main = run [consoleReporter] $ do
         it "re8"  $ quickCheck $ testMatchVsRef AB re8
         it "re9"  $ quickCheck $ testMatchVsRef AB re9
         it "re10" $ quickCheck $ testMatchVsRef AB re10
-      describe "withMatched" $ do
-        it "withMatched" $ quickCheck $ testWithMatched (foldMany (str "a" <|> str "ba"))
+      describe "withMatched" $
+        it "withMatched" $ quickCheck $
+          testWithMatched (foldMany (str "a" <|> str "ba"))
     describe "Fixtures" $ do
       describe "Matching vs reference" $ do
-        it "re0" $ check $ ("a" =~ re0) ==? reference re0 "a"
-        it "re9" $ check $ ("a" =~ re9) ==? reference re9 "a"
+        it "re0" $
+          ("a" =~ re0) `shouldEqual` reference re0 "a"
+        it "re9" $
+          ("a" =~ re9) `shouldEqual` reference re9 "a"
       describe "findFirstPrefix" $ do
-        it "t1" $ check $
-          findFirstPrefix (str "a" <|> str "ab") "abc" ==?
+        it "t1" $
+          findFirstPrefix (str "a" <|> str "ab") "abc" `shouldEqual`
             Just (Match { before: "", result: "a", after: "bc" })
-        it "t2" $ check $
-          findFirstPrefix (str "ab" <|> str "a") "abc" ==?
+        it "t2" $
+          findFirstPrefix (str "ab" <|> str "a") "abc" `shouldEqual`
             Just (Match { before: "", result: "ab", after: "c" })
-        it "t3" $ check $
-          findFirstPrefix (str "bc") "abc" ==?
+        it "t3" $
+          findFirstPrefix (str "bc") "abc" `shouldEqual`
             Nothing
       describe "findFirstInfix" $ do
-        it "t1" $ check $
-          (findFirstInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Match { before: "t", result:  "a", after: "bc" }))
-        it "t2" $ check $
-          (findFirstInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Match { before: "t", result: "ab", after: "c" }))
+        it "t1" $
+          findFirstInfix (str "a" <|> str "ab") "tabc" `shouldEqual`
+            Just (Match { before: "t", result:  "a", after: "bc" })
+        it "t2" $
+          findFirstInfix (str "ab" <|> str "a") "tabc" `shouldEqual`
+            Just (Match { before: "t", result: "ab", after: "c" })
       describe "findLongestPrefix" $ do
-        it "t1" $ check $
-          (findLongestPrefix (str "a" <|> str "ab") "abc") ==?
-            (Just (Match { before: "", result: "ab", after: "c" }))
-        it "re9" $ check $
-          (findLongestPrefix re9 "abc") ==?
-            (Just (Match { before: "", result: "a", after: "c" }))
-        it "t2" $ check $
-          (findLongestPrefix (str "ab" <|> str "a") "abc") ==?
-            (Just (Match { before: "", result: "ab", after: "c" }))
-        it "t3" $ check $
-          (findLongestPrefix (str "bc") "abc") ==?
+        it "t1" $
+          findLongestPrefix (str "a" <|> str "ab") "abc" `shouldEqual`
+            Just (Match { before: "", result: "ab", after: "c" })
+        it "re9" $
+          findLongestPrefix re9 "abc" `shouldEqual`
+            Just (Match { before: "", result: "a", after: "c" })
+        it "t2" $
+          findLongestPrefix (str "ab" <|> str "a") "abc" `shouldEqual`
+            Just (Match { before: "", result: "ab", after: "c" })
+        it "t3" $
+          findLongestPrefix (str "bc") "abc" `shouldEqual`
             Nothing
       describe "findLongestInfix" $ do
-        it "t1" $ check $
-          (findLongestInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Match { before: "t", result:  "ab", after: "c" }))
-        it "t2" $ check $
-          (findLongestInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Match { before: "t", result: "ab", after: "c" }))
-        it "t3" $ check $
-          (findLongestInfix (str "bc") "tabc") ==?
-            (Just (Match { before: "ta", result: "bc", after: "" }))
+        it "t1" $
+          findLongestInfix (str "a" <|> str "ab") "tabc" `shouldEqual`
+            Just (Match { before: "t", result:  "ab", after: "c" })
+        it "t2" $
+          findLongestInfix (str "ab" <|> str "a") "tabc" `shouldEqual`
+            Just (Match { before: "t", result: "ab", after: "c" })
+        it "t3" $
+          findLongestInfix (str "bc") "tabc" `shouldEqual`
+            Just (Match { before: "ta", result: "bc", after: "" })
       describe "findShortestPrefix" $ do
-        it "t1" $ check $
-          (findShortestPrefix (str "a" <|> str "ab") "abc") ==?
-            (Just (Match { before: "", result: "a", after: "bc" }))
-        it "t2" $ check $
-          (findShortestPrefix (str "ab" <|> str "a") "abc") ==?
-            (Just (Match { before: "", result: "a", after:  "bc" }))
-        it "t3" $ check $
-          (findShortestPrefix (str "bc") "abc") ==?
+        it "t1" $
+          findShortestPrefix (str "a" <|> str "ab") "abc" `shouldEqual`
+            Just (Match { before: "", result: "a", after: "bc" })
+        it "t2" $
+          findShortestPrefix (str "ab" <|> str "a") "abc" `shouldEqual`
+            Just (Match { before: "", result: "a", after:  "bc" })
+        it "t3" $
+          findShortestPrefix (str "bc") "abc" `shouldEqual`
             Nothing
       describe "findShortestInfix" $ do
-        it "t1" $ check $
-          (findShortestInfix (str "a" <|> str "ab") "tabc") ==?
-            (Just (Match { before: "t", result: "a", after: "bc" }))
-        it "t2" $ check $
-          (findShortestInfix (str "ab" <|> str "a") "tabc") ==?
-            (Just (Match { before:  "t", result: "a", after: "bc" }))
-        it "t3" $ check $
-          (findShortestInfix (str "bc") "tabc") ==?
-            (Just (Match { before:  "ta", result: "bc", after: "" }))
+        it "t1" $
+          findShortestInfix (str "a" <|> str "ab") "tabc" `shouldEqual`
+            Just (Match { before: "t", result: "a", after: "bc" })
+        it "t2" $
+          findShortestInfix (str "ab" <|> str "a") "tabc" `shouldEqual`
+            Just (Match { before:  "t", result: "a", after: "bc" })
+        it "t3" $
+          findShortestInfix (str "bc") "tabc" `shouldEqual`
+            Just (Match { before:  "ta", result: "bc", after: "" })
       describe "replace" $ do
-        it "t1" $ check $
-          (replace ("x" <$ str "a" <|> "y" <$ str "ab") "tabc") ==?
+        it "t1" $
+          replace ("x" <$ str "a" <|> "y" <$ str "ab") "tabc" `shouldEqual`
             "tyc"
-        it "t2" $ check $
-          (replace ("y" <$ str "ab" <|>  "x" <$ str "a") "tabc") ==?
+        it "t2" $
+          replace ("y" <$ str "ab" <|> "x" <$ str "a") "tabc" `shouldEqual`
             "tyc"
-        it "t3" $ check $
-          (replace ("x" <$ str "bc") "tabc") ==?
+        it "t3" $
+          replace ("x" <$ str "bc") "tabc" `shouldEqual`
             "tax"
-        it "t4" $ check $
-          (replace ("y" <$ str "a" <|> "x" <$ str "ab") "tacabc") ==?
+        it "t4" $
+          replace ("y" <$ str "a" <|> "x" <$ str "ab") "tacabc" `shouldEqual`
             "tycxc"
